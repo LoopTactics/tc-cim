@@ -5,7 +5,7 @@ set(
 )
 include_directories(${pybind11_INCLUDE_DIRS})
 # Python.h
-find_package(PythonLibs REQUIRED)
+find_package(PythonLibs 3.6 EXACT REQUIRED)
 include_directories(${PYTHON_INCLUDE_DIRS})
 
 add_library(tclib MODULE tclib.cc)
