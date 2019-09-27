@@ -37,6 +37,7 @@ DEFINE_bool(
     "Print debug spew for the tc_mapper like cuda code, mapping options etc");
 DEFINE_bool(dump_cuda, false, "Print the generated source");
 DEFINE_bool(dump_ptx, false, "Dump the generated PTX");
+DEFINE_bool(dump_tactics, false, "Print the generated loop tactics source");
 
 // PTX generation
 DEFINE_string(

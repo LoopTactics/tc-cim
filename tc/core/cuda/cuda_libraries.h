@@ -38,6 +38,16 @@ constexpr auto types = R"C(
 #endif
 )C";
 
+constexpr auto minmax = R"C(
+#ifndef min
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef max
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
+)C";
+
 constexpr auto defines = R"C(
 #define inff __int_as_float(0x7f800000)
 #define inf __longlong_as_double(0x7ff0000000000000LL)

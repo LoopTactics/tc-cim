@@ -408,6 +408,18 @@ inline TuningConfiguration setupTuningParameters(
 // Creates well-chosen parameter sizes to match the input shapes.
 inline TuningConfiguration setupTuningParameters(
     const std::vector<const DLConstTensor*>& inputs,
+    const std::vector<TacticsMappingOptions>& baseMappings) {
+  std::vector<size_t> range;
+  TuningConfiguration configuration;
+  std::tie(configuration, range) =
+      setupGenericTuningParametersAndGetRange(inputs, baseMappings);
+
+  return configuration;
+}
+
+// Creates well-chosen parameter sizes to match the input shapes.
+inline TuningConfiguration setupTuningParameters(
+    const std::vector<const DLConstTensor*>& inputs,
     const std::vector<CpuMappingOptions>& baseMappings) {
   return setupGenericTuningParametersAndGetRange(inputs, baseMappings).first;
 }

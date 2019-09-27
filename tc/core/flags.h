@@ -30,6 +30,7 @@ DECLARE_bool(debug_cuda);
 DECLARE_bool(debug_tuner);
 DECLARE_bool(dump_cuda);
 DECLARE_bool(dump_ptx);
+DECLARE_bool(dump_tactics);
 
 // ptx generation
 DECLARE_string(cuda_compiler);

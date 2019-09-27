@@ -80,3 +80,8 @@ message CpuMappingOptionsProto {
   // Target-independent mapping options.
   required MappingOptionsProto generic_mapping_options = 1;
 }
+
+message TacticsMappingOptionsProto {
+  // Target-independent mapping options.
+  required MappingOptionsProto generic_mapping_options = 1;
+}

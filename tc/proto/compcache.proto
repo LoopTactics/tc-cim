@@ -69,3 +69,26 @@ message CpuOptionsCacheProto {
   repeated OptionsCacheKeyProto keys = 1;
   repeated CpuOptionsCacheValueProto values = 2;
 }
+
+/******************************************************************************/
+/* Tactics-specific cache                                                         */
+/******************************************************************************/
+message TacticsOptionsCacheValueProto{
+  required TacticsMappingOptionsProto kernel_options = 1;
+  repeated uint64 recorded_runtimes = 2;
+}
+
+/*
+ * The options cache proto is a multimap.
+ * We store the keys multiple times in the proto for now.
+ * Once we measure that the caches grow too big we can improve this.
+ * Note however that if the key size and the value size are of the same order of
+ * magnitude, the gain will be lower than 2x (just for perspective).
+ *
+ * TODO: move to proto3 and use a proper map. For now ensure
+ *   keys.size() == values.size() in code.
+ */
+message TacticsOptionsCacheProto {
+  repeated OptionsCacheKeyProto keys = 1;
+  repeated TacticsOptionsCacheValueProto values = 2;
+}

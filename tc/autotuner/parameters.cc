@@ -320,6 +320,11 @@ void TuningConfiguration::fromCudaMappingOptions(
 }
 #endif
 
+void TuningConfiguration::fromTacticsMappingOptions(
+    const TacticsMappingOptions& options) {
+  fromMappingOptions(options.generic);
+}
+
 void TuningConfiguration::fromCpuMappingOptions(
     const CpuMappingOptions& options) {
   fromMappingOptions(options.generic);
@@ -351,6 +356,11 @@ void TuningConfiguration::applyToCudaMappingOptions(
   options.sharedDepth(sharedDepth.value());
 }
 #endif
+
+void TuningConfiguration::applyToTacticsMappingOptions(
+    TacticsMappingOptions& options) const {
+  applyToMappingOptions(options.generic);
+}
 
 void TuningConfiguration::applyToCpuMappingOptions(
     CpuMappingOptions& options) const {

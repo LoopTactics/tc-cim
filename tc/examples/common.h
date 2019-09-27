@@ -21,6 +21,7 @@
 #if TC_WITH_CUDA
 #include "tc/core/cuda/cuda_backend.h"
 #endif
+#include "tc/core/tactics/tactics_backend.h"
 
 template <typename Backend>
 inline at::Tensor makeATenTensor(at::ArrayRef<long int> sizes);
@@ -35,5 +36,11 @@ inline at::Tensor makeATenTensor<tc::CudaBackend>(
 
 template <>
 inline at::Tensor makeATenTensor<tc::CpuBackend>(at::ArrayRef<long int> sizes) {
+  return at::CPU(at::kFloat).rand(sizes);
+}
+
+template <>
+inline at::Tensor makeATenTensor<tc::TacticsBackend>(
+    at::ArrayRef<long int> sizes) {
   return at::CPU(at::kFloat).rand(sizes);
 }

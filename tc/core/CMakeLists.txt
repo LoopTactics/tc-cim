@@ -187,3 +187,37 @@ if (WITH_CUDA)
     DESTINATION lib
   )
 endif()
+
+
+################################################################################
+# tc_tactics
+#
+# Core Loop Tactics library
+################################################################################
+add_library(
+  tc_tactics
+
+  SHARED
+
+  # Files needed for execution
+  polyhedral/tactics/mapped_scop.cc
+  polyhedral/tactics/codegen.cc
+  tactics/tactics_mapping_options.cc
+  tactics/tactics_mapping_options_cpp_printer.cc
+  tactics/tactics_tc_executor.cc
+  tactics/tactics_rtc.cc
+  )
+target_include_directories(tc_tactics PUBLIC ${LLVM_INCLUDE_DIRS})
+target_link_libraries(
+  tc_tactics
+  tc_lang
+  tc_version
+  tc_proto
+  tc_core
+  )
+install(
+  TARGETS
+  tc_tactics
+  
+  DESTINATION lib
+  )

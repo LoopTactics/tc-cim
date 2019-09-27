@@ -25,6 +25,7 @@
 #include "tc/core/cuda/cuda_mapping_options.h"
 #endif
 
+#include "tc/core/tactics/tactics_mapping_options.h"
 #include "tc/core/utils/memory.h"
 #include "tc/core/utils/time.h"
 
@@ -176,6 +177,9 @@ class TuningConfiguration {
   void fromCudaMappingOptions(const CudaMappingOptions& options);
   void applyToCudaMappingOptions(CudaMappingOptions& options) const;
 #endif
+
+  void fromTacticsMappingOptions(const TacticsMappingOptions& options);
+  void applyToTacticsMappingOptions(TacticsMappingOptions& options) const;
 
   void addValidator(std::function<bool(const TuningConfiguration&)> v);
   bool isValid() const;

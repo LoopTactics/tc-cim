@@ -3,6 +3,7 @@ set(AUTOTUNER_FILES
   parameters.cc
   utils.cc
   cpu/autotuner.cc
+  tactics/autotuner.cc
 )
 
 set(TC_LIBRARIES ${TC_LIBRARIES} tc_core_cpu)
@@ -10,6 +11,10 @@ set(TC_LIBRARIES ${TC_LIBRARIES} tc_core_cpu)
 if (WITH_CUDA)
 set(AUTOTUNER_FILES ${AUTOTUNER_FILES} cuda/autotuner.cc)
 set(TC_LIBRARIES ${TC_LIBRARIES} tc_cuda)
+endif()
+
+if (WITH_CUDA)
+set(TC_LIBRARIES ${TC_LIBRARIES} tc_tactics)
 endif()
 
 add_library(
