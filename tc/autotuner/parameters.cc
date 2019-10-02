@@ -354,33 +354,6 @@ TuningConfiguration::TuningConfiguration()
       unrollCopyShared("unroll copy shared"),
       useReadOnlyCache("use readonly cache (i.e. emit __ldg loads)"),
       matchLibraryCalls("match library calls") {
-  addValidator([](const TuningConfiguration& conf) {
-    auto b0v = conf.blockParams.dims.at(0).value();
-    auto b1v = conf.blockParams.dims.at(1).value();
-    auto b2v = conf.blockParams.dims.at(2).value();
-    if (b0v <= 0 or b0v > 1024 or b1v <= 0 or b1v > 1024 or b2v <= 0 or
-        b2v > 64) {
-      return false;
-    }
-    auto blockProduct = [&]() {
-      switch (conf.blockParams.numberDims.value()) {
-        case 3:
-          return b0v * b1v * b2v;
-        case 2:
-          return b0v * b1v;
-        case 1:
-          return b0v;
-        default:
-          TC_CHECK(false) << "Must have (1-3) block dims, got: "
-                          << conf.blockParams.numberDims.value();
-      }
-      return b0v;
-    }();
-    if (blockProduct < 32 or blockProduct > 512) {
-      return false;
-    }
-    return true;
-  });
 }
 
 namespace {
