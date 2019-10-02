@@ -95,11 +95,16 @@ static std::string llvmCompile(
   std::tie(device, major, minor) = getCudaArchitecture();
 
   char pat[] = "/tmp/cudaXXXXXX";
-  TC_CHECK_GE(mkstemp(pat), 0);
+  int fd = mkstemp(pat);
+  TC_CHECK_GE(fd, 0);
   std::string inputFileName(pat);
 
   // cstdio's std::remove to delete files
-  tc::ScopeGuard sgi([&]() { std::remove(inputFileName.c_str()); });
+  tc::ScopeGuard sgi([&]() {
+    close(fd);
+    std::remove(inputFileName.c_str());
+  });
+
   {
     std::ofstream ostream(inputFileName, std::ios::binary);
     ostream << source;
@@ -173,11 +178,16 @@ static std::string nvccCompile(
   std::tie(device, major, minor) = getCudaArchitecture();
 
   char pat[] = "/tmp/cudaXXXXXX";
-  TC_CHECK_GE(mkstemp(pat), 0);
+  int fd = mkstemp(pat);
+  TC_CHECK_GE(fd, 0);
   std::string inputFileName(pat);
 
   // cstdio's std::remove to delete files
-  tc::ScopeGuard sgi([&]() { std::remove(inputFileName.c_str()); });
+  tc::ScopeGuard sgi([&]() {
+    close(fd);
+    std::remove(inputFileName.c_str());
+  });
+
   {
     std::ofstream ostream(inputFileName, std::ios::binary);
     ostream << source;
