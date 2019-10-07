@@ -17,16 +17,21 @@
 
 #include "tc/aten/aten.h"
 #include "tc/core/cpu/cpu_backend.h"
+
+#if TC_WITH_CUDA
 #include "tc/core/cuda/cuda_backend.h"
+#endif
 
 template <typename Backend>
 inline at::Tensor makeATenTensor(at::ArrayRef<long int> sizes);
 
+#if TC_WITH_CUDA
 template <>
 inline at::Tensor makeATenTensor<tc::CudaBackend>(
     at::ArrayRef<long int> sizes) {
   return at::CUDA(at::kFloat).rand(sizes);
 }
+#endif
 
 template <>
 inline at::Tensor makeATenTensor<tc::CpuBackend>(at::ArrayRef<long int> sizes) {

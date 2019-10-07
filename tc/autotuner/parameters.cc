@@ -231,8 +231,12 @@ void TuningConfiguration::applyToParameters(
   intraTileScheduleOptions.apply(f);
   fixParametersBeforeScheduling.apply(f);
   tilingParams.apply(f);
+
+#if TC_WITH_CUDA
   blockParams.apply(f);
   gridParams.apply(f);
+#endif
+
   unrollFactor.apply(f);
   useSharedMemory.apply(f);
   usePrivateMemory.apply(f);
@@ -266,8 +270,11 @@ std::vector<ParameterView> TuningConfiguration::collectParameters() {
   collect(intraTileScheduleOptions.collectParameters());
   params.emplace_back(fixParametersBeforeScheduling);
   collect(tilingParams.collectParameters());
+
+#if TC_WITH_CUDA
   collect(blockParams.collectParameters());
   collect(gridParams.collectParameters());
+#endif
 
   params.emplace_back(unrollFactor);
   params.emplace_back(useSharedMemory);
@@ -298,6 +305,7 @@ void TuningConfiguration::fromMappingOptions(
   matchLibraryCalls.selectValue(options.proto.match_library_calls());
 }
 
+#if TC_WITH_CUDA
 void TuningConfiguration::fromCudaMappingOptions(
     const CudaMappingOptions& options) {
   fromMappingOptions(options.generic);
@@ -310,6 +318,7 @@ void TuningConfiguration::fromCudaMappingOptions(
   privateDepth.selectFromValue(options.proto().private_depth());
   sharedDepth.selectFromValue(options.proto().shared_depth());
 }
+#endif
 
 void TuningConfiguration::fromCpuMappingOptions(
     const CpuMappingOptions& options) {
@@ -328,6 +337,7 @@ void TuningConfiguration::applyToMappingOptions(
   options.matchLibraryCalls(matchLibraryCalls.value());
 }
 
+#if TC_WITH_CUDA
 void TuningConfiguration::applyToCudaMappingOptions(
     CudaMappingOptions& options) const {
   applyToMappingOptions(options.generic);
@@ -340,6 +350,7 @@ void TuningConfiguration::applyToCudaMappingOptions(
   options.privateDepth(privateDepth.value());
   options.sharedDepth(sharedDepth.value());
 }
+#endif
 
 void TuningConfiguration::applyToCpuMappingOptions(
     CpuMappingOptions& options) const {
@@ -401,8 +412,12 @@ void TuningConfiguration::fixParameters(
       fixedParams.fixParametersBeforeScheduling, fixParametersBeforeScheduling);
   maybeFixScalar(fixedParams.unrollFactor, unrollFactor);
   maybeFixVector(fixedParams.tilingParameters, tilingParams);
+
+#if TC_WITH_CUDA
   maybeFixVector(fixedParams.blockParameters, blockParams);
   maybeFixVector(fixedParams.gridParameters, gridParams);
+#endif
+
   maybeFixScalar(fixedParams.tileImperfectlyNested, tileImperfectlyNested);
   maybeFixScalar(fixedParams.useSharedMemory, useSharedMemory);
   maybeFixScalar(fixedParams.usePrivateMemory, usePrivateMemory);
@@ -432,12 +447,14 @@ void TilingParameters::setRange(size_t maxDims, std::vector<size_t>& values) {
       1, maxDims, "number of tiling dimensions", values, "t");
 }
 
+#if TC_WITH_CUDA
 void CudaDimParameters::setRange(
     std::vector<size_t>& values,
     const std::string& dimBaseName) {
   MultiRangeParams::setRange(
       1, 3, "number of cuda dimensions", values, dimBaseName);
 }
+#endif
 
 namespace {
 template <typename Params, typename View>
@@ -456,9 +473,11 @@ void TilingParameters::fromMappingOptions(const TilingView& options) {
   ::tc::autotune::fromMappingOptions(*this, options);
 }
 
+#if TC_WITH_CUDA
 void CudaDimParameters::fromMappingOptions(const CudaDimView& options) {
   ::tc::autotune::fromMappingOptions(*this, options);
 }
+#endif
 
 std::vector<ParameterView> MultiRangeParams::collectParameters() {
   std::vector<ParameterView> params;
@@ -482,6 +501,7 @@ void TilingParameters::applyToMappingOptions(TilingView& options) const {
   }
 }
 
+#if TC_WITH_CUDA
 void CudaDimParameters::applyToMappingOptions(CudaDimView& options) const {
   auto proto = options.proto.default_instance();
   switch (numberDims.value()) {
@@ -498,6 +518,7 @@ void CudaDimParameters::applyToMappingOptions(CudaDimView& options) const {
   }
   options.proto = proto;
 }
+#endif
 
 TuningParameterFixer& TuningParameterFixer::fixOuterScheduleFusionStrategy(
     const FusionStrategy& fs) {

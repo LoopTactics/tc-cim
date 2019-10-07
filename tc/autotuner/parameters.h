@@ -20,7 +20,11 @@
 #include <vector>
 
 #include "tc/core/cpu/cpu_mapping_options.h"
+
+#if TC_WITH_CUDA
 #include "tc/core/cuda/cuda_mapping_options.h"
+#endif
+
 #include "tc/core/utils/memory.h"
 #include "tc/core/utils/time.h"
 
@@ -135,6 +139,7 @@ class TilingParameters : public MultiRangeParams {
   using MultiRangeParams::collectParameters;
 };
 
+#if TC_WITH_CUDA
 class CudaDimParameters : public MultiRangeParams {
  public:
   void setRange(
@@ -146,6 +151,7 @@ class CudaDimParameters : public MultiRangeParams {
   using MultiRangeParams::apply;
   using MultiRangeParams::collectParameters;
 };
+#endif
 
 class TuningParameterFixer;
 
@@ -165,8 +171,11 @@ class TuningConfiguration {
 
   void fromCpuMappingOptions(const CpuMappingOptions& options);
   void applyToCpuMappingOptions(CpuMappingOptions& options) const;
+
+#if TC_WITH_CUDA
   void fromCudaMappingOptions(const CudaMappingOptions& options);
   void applyToCudaMappingOptions(CudaMappingOptions& options) const;
+#endif
 
   void addValidator(std::function<bool(const TuningConfiguration&)> v);
   bool isValid() const;
@@ -181,8 +190,12 @@ class TuningConfiguration {
   SchedulerOptionsParameters intraTileScheduleOptions;
   BoolParameter fixParametersBeforeScheduling;
   TilingParameters tilingParams;
+
+#if TC_WITH_CUDA
   CudaDimParameters blockParams;
   CudaDimParameters gridParams;
+#endif
+
   RangeParameter unrollFactor;
   BoolParameter tileImperfectlyNested;
   BoolParameter useSharedMemory;

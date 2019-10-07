@@ -375,6 +375,7 @@ setupGenericTuningParametersAndGetRange(
   return {configuration, range};
 }
 
+#if TC_WITH_CUDA
 // Creates well-chosen parameter sizes to match the input shapes.
 inline TuningConfiguration setupTuningParameters(
     const std::vector<const DLConstTensor*>& inputs,
@@ -402,6 +403,7 @@ inline TuningConfiguration setupTuningParameters(
 
   return configuration;
 }
+#endif
 
 // Creates well-chosen parameter sizes to match the input shapes.
 inline TuningConfiguration setupTuningParameters(
