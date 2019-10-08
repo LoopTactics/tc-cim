@@ -126,11 +126,11 @@ std::unordered_map<std::string, std::vector<size_t>> parseShapes(const std::stri
 	currSizes.push_back(currSize);
 	currSize = 0;
       } else if(c == '/') {
-	if(lastChar == ':' || lastChar == ',')
-	  throw InputSizeParseException(pos, "Unexpected character");
-
 	currMode = INPUT_NAME;
-	currSizes.push_back(currSize);
+
+	if(lastChar != ':' && lastChar != ',')
+	  currSizes.push_back(currSize);
+
 	ret.emplace(std::make_pair(currInputName, currSizes));
 	currSize = 0;
 	currSizes.clear();
@@ -145,9 +145,10 @@ std::unordered_map<std::string, std::vector<size_t>> parseShapes(const std::stri
     if(currInputName.empty())
       throw InputSizeParseException(pos, "Empty input name");
 
-    currSizes.push_back(currSize);
-    ret.emplace(std::make_pair(currInputName, currSizes));
+    if(lastChar != ':' && lastChar != ',')
+      currSizes.push_back(currSize);
 
+    ret.emplace(std::make_pair(currInputName, currSizes));
   }
 
   return ret;
@@ -185,14 +186,32 @@ template <typename Backend> void compile()
   tc::CompilerOptions compilerOptions;
 
   std::string entryPointName = FLAGS_entrypoint;
+  
+  std::map<std::string, lang::TreeRef> parsedTcs = tc::detail::parse(tc);
 
-  if(entryPointName == "") {
-    std::cerr << "No entry point specified" << std::endl;
+  if(parsedTcs.size() == 0) {
+    std::cerr << "No entry points found in " << FLAGS_input << std::endl;
     throw;
   }
   
-  std::map<std::string, lang::TreeRef> parsedTcs = tc::detail::parse(tc);
-  lang::TreeRef entryPoint =  parsedTcs[entryPointName];
+  if(entryPointName == "") {
+    if(parsedTcs.size() == 1) {
+      entryPointName = parsedTcs.begin()->first;
+    } else {
+      std::cerr << "More than one entry point found in input file; "
+		<< "please specify an entrypoint using --entrypoint"
+		<< std::endl;
+      throw;
+    }
+  }
+
+  if(parsedTcs.find(entryPointName) == parsedTcs.end()) {
+    std::cerr << "Entry point `" << entryPointName << "' not found"
+	      << std::endl;
+    throw;
+  }
+  
+  lang::TreeRef entryPoint = parsedTcs[entryPointName];
 
   lang::Def entryFunction(lang::Sema(compilerOptions).checkFunction(entryPoint));
 
@@ -220,17 +239,12 @@ template <typename Backend> void compile()
     at::ArrayRef<long int> atShape(reinterpret_cast<long int*>(shapeIter->second.data()),
 				   shapeIter->second.size());
 
-    std::cout << "Shape for " << paramName << ": " << atShape << " was: " << shapeIter->second << std::endl;
-
     at::Tensor t = makeATenTensor<Backend>(atShape);
     inputs.push_back(std::move(t));
   }
   
   // first parse the devices
   std::vector<size_t> devices = {0};
-  // at::Tensor I0 = makeATenTensor<Backend>({256});
-  // at::Tensor I1 = makeATenTensor<Backend>({256});
-
 
   std::unordered_map<size_t, std::vector<DLConstTensorUPtr>> inputsPerDevice;
   std::unordered_map<size_t, std::vector<const DLConstTensor*>> rawInputsPerDevice;
