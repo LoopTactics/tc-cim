@@ -25,5 +25,6 @@ foreach(i ${EXAMPLES_FILES})
      tc_core
      tc_aten
      tc_tactics
+     dl
   )
 endforeach()
