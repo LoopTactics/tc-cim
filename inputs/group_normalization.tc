@@ -1,0 +1,35 @@
+def moments2_2D_1D(float(N, K) I) -> (mean, var)
+{
+# var = E(x^2) - mean^2.
+    mean(n) +=! I(n, r_k)
+     var(n) +=! I(n, r_k) * I(n, r_k)
+    mean(n)  = mean(n) / (K)
+     var(n)  =  var(n) / (K) - mean(n) * mean(n)
+}
+
+def group_normalization(
+    float(N, G, D, H, W) I, float(G, D) gamma, float(G, D) beta,
+    float(N, G) mean, float(N, G) var)
+    -> (O)
+{
+    O(n, g, d, h, w) = gamma(g, d)
+      * ( I(n, g, d, h, w) - mean(n, g) )
+      * rsqrt( var(n, g) + 1e-5 )
+      + beta(g, d)
+}
+
+def group_normalization_single_kernel(
+    float(N, G, D, H, W) I, float(G, D) gamma, float(G, D) beta)
+    -> (O, sum, sumSquares)
+{
+# This implementation uses the formula var = E(x^2) - mean^2 and
+# inlining. This gets another 20% on V100.
+            sum(n, g) +=! I(n, g, r_d, r_h, r_w)
+     sumSquares(n, g) +=! I(n, g, r_d, r_h, r_w) * I(n, g, r_d, r_h, r_w)
+    O(n, g, d, h, w) = gamma(g, d)
+      * ( I(n, g, d, h, w) - sum(n, g) / (D * H * W))
+      * rsqrt( sumSquares(n, g) / (D * H * W)
+            - sum(n, g) * sum(n, g)  / (D * H * W)  / (D * H * W)
+            + 1e-5 )
+      + beta(g, d)
+}

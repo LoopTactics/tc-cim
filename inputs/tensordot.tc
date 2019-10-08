@@ -1,0 +1,5 @@
+def tensordot(float(N, C1, C2, H, W) I0,
+              float(N, C2, C3, H, W) I1)  -> (O)
+{
+    O(n, c1, c3, h, w) +=! I0(n, c1, r_c2, h, w) * I1(n, r_c2, c3, h, w)
+}

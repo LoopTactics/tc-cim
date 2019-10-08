@@ -1,0 +1,7 @@
+def convolution(float(N,C,H,W) I, float(F,C,KH,KW) W1, float(F) B)
+-> (O)
+{
+    O(n, f, h, w) +=!
+        I(n, r_c, h + r_kh, w + r_kw) * W1(f, r_c, r_kh, r_kw)
+    O(n, f, h, w)  = O(n, f, h, w) + B(f)
+}
