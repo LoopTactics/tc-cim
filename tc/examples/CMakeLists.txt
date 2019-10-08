@@ -10,6 +10,7 @@ set(EXAMPLES_FILES
   blockdiagperm
   group_normalization
   tensordot
+  tensorcompc
 )
 foreach(i ${EXAMPLES_FILES})
   add_executable(${i} ${i}.cc)
@@ -23,5 +24,6 @@ foreach(i ${EXAMPLES_FILES})
      tc_autotuner
      tc_core
      tc_aten
+     tc_tactics
   )
 endforeach()
