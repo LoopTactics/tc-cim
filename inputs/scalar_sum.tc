@@ -1,0 +1,4 @@
+def scalar_sum(float(N, M) I)  -> (O)
+{
+    O +=! I(n, m)
+}

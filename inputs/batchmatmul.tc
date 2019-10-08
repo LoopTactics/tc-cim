@@ -1,0 +1,3 @@
+def batch_matmul(float(B, N, M) X, float(B, M, K) Y) -> (Z) {
+    Z(b, n, k) +=! X(b, n, r_m) * Y(b, r_m, k)
+}

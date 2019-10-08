@@ -1,0 +1,31 @@
+def sum_2D_1D(float(N, K) I) -> (sum)
+{
+    sum(n) +=! I(n, r_k)
+}
+def mean_2D_1D(float(N, K) I) -> (mean)
+{
+    mean(n) +=! I(n, r_k)
+    mean(n)  = mean(n) / (K)
+}
+def sum_squares_2D_1D(float(N, K) I) -> (sum_squares)
+{
+     sum_squares(n) +=! I(n, r_k) * I(n, r_k)
+}
+def var_2D_1D(float(N, K) I, float(N) mean) -> (var)
+{
+     var(n) +=! I(n, r_k) * I(n, r_k)
+     var(n)  =  var(n) / (K) - mean(n) * mean(n)
+}
+def sum_and_squares_2D_1D(float(N, K) I) -> (sum, sum_squares)
+{
+             sum(n) +=! I(n, r_k)
+     sum_squares(n) +=! I(n, r_k) * I(n, r_k)
+}
+def moments2_2D_1D(float(N, K) I) -> (mean, var)
+{
+# var = E(x^2) - mean^2.
+    mean(n) +=! I(n, r_k)
+     var(n) +=! I(n, r_k) * I(n, r_k)
+    mean(n)  = mean(n) / (K)
+     var(n)  =  var(n) / (K) - mean(n) * mean(n)
+}

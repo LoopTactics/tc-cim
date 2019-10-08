@@ -1,0 +1,18 @@
+def Kronecker3_1(float(D2, N2) W2, float(M, N0, N1, N2) X) -> (XW2) {
+   XW2(m, n0, n1, d2)   +=! X(m, n0, n1, r_n2) * W2(d2, r_n2)
+}
+
+def Kronecker3_2(float(D1, N1) W1, float(M, N0, N1, D2) XW2) -> (XW2W1) {
+   XW2W1(m, n0, d1, d2) +=! XW2(m, n0, r_n1, d2) * W1(d1, r_n1)
+}
+
+def Kronecker3_3(float(D0, N0) W0, float(M, N0, D1, D2) XW2W1) -> (Y) {
+   Y(m, d0, d1, d2)     +=! XW2W1(m, r_n0, d1, d2) * W0(d0, r_n0)
+}
+
+def Kronecker3Full(float(D0, N0) W0, float(D1, N1) W1,
+             float(D2, N2) W2, float(M, N0, N1, N2) X) -> (Y, XW2, XW2W1) {
+     XW2(m, n0, n1, d2) +=!     X(m,   n0,   n1, r_n2) * W2(d2, r_n2)
+   XW2W1(m, n0, d1, d2) +=!   XW2(m,   n0, r_n1,   d2) * W1(d1, r_n1)
+       Y(m, d0, d1, d2) +=! XW2W1(m, r_n0,   d1,   d2) * W0(d0, r_n0)
+}

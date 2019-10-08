@@ -1,0 +1,5 @@
+def tensordot(float(N) I0,
+              float(N) I1)  -> (O)
+{
+    O(n) +=! I0(n) * I1(n)
+}

@@ -1,0 +1,6 @@
+def fcrelu(float(B,I) input, float(O,I) weight, float(O) bias) -> (out)
+{
+  out(b,o)  = bias(o) where b in 0:B
+  out(b,o) += input(b,i) * weight(o,i)
+  out(b,o)  = fmax(out(b,o), 0) 
+}

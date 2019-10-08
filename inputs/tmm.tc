@@ -1,0 +1,3 @@
+def tmm(float(M,K) A, float(N,K) B) -> (C) {
+    C(m, n) +=! A(m, r_k) * B(n, r_k)
+}

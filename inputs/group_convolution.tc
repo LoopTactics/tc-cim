@@ -1,0 +1,7 @@
+def group_convolution(float(N,G,C,H,W) I, float(G,F,C,KH,KW) W1, float(G,F) B)
+-> (O)
+{
+    O(n, g, f, h, w) +=!
+        I(n, g, r_c, h + r_kh, w + r_kw) * W1(g, f, r_c, r_kh, r_kw)
+    O(n, g, f, h, w)  = O(n, g, f, h, w) + B(g, f)
+}
