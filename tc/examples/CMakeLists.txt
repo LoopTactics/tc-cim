@@ -7,9 +7,9 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # Examples
 ################################################################################
 set(EXAMPLES_FILES
-  blockdiagperm
-  group_normalization
-  tensordot
+  # blockdiagperm
+  # group_normalization
+  # tensordot
   tensorcompc
 )
 foreach(i ${EXAMPLES_FILES})
