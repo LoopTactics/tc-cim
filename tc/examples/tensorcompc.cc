@@ -265,7 +265,12 @@ template <typename Backend> void compile()
       rawInputsPerDevice.begin()->second,
       mappingOptions);
 
-  std::cout << compilationResult.source << std::endl;
+  if(FLAGS_output == "-" || FLAGS_output == "") {
+    std::cout << compilationResult.source << std::endl;
+  } else {
+    std::ofstream ofs(FLAGS_output, std::ios::binary);
+    ofs << compilationResult.source;
+  }
 }
 
 // From root, run with:
