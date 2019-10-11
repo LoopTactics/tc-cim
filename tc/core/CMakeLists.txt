@@ -35,6 +35,10 @@ add_library(
   polyhedral/separation.cc
   polyhedral/unroll.cc
   polyhedral/utils.cc
+
+  polyhedral/matchers/access_patterns.cc
+  polyhedral/matchers/builders.cc
+  polyhedral/matchers/matchers.cc
 )
 target_include_directories(tc_core PUBLIC ${LLVM_INCLUDE_DIRS})
 target_link_libraries(
