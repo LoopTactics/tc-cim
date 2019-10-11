@@ -1,4 +1,4 @@
-#include <isl/isl-noexceptions.h>
+#include <isl/cpp.h>
 
 #include <algorithm>
 #include <functional>

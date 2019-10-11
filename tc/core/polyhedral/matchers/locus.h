@@ -1,7 +1,7 @@
 #ifndef ISLUTILS_LOCUS_H
 #define ISLUTILS_LOCUS_H
 
-#include <isl/isl-noexceptions.h>
+#include <isl/cpp.h>
 
 namespace set_maker {
 

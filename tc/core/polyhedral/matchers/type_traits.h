@@ -1,7 +1,7 @@
 #ifndef ISLUTILS_TYPE_TRAITS
 #define ISLUTILS_TYPE_TRAITS
 
-#include <isl/isl-noexceptions.h>
+#include <isl/cpp.h>
 
 #include <type_traits>
 

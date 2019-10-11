@@ -3,7 +3,7 @@
 
 #include "type_traits.h"
 
-#include <isl/isl-noexceptions.h>
+#include <isl/cpp.h>
 
 namespace isl {
 /// Equality comparison operator for isl objects.  Two null objects compare
