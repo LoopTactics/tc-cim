@@ -35,6 +35,16 @@ class ScheduleTree;
 
 namespace tactics {
 
+struct MatMulInfo {
+  std::string A;
+  std::string B;
+  std::string C;
+  std::string alpha;
+  int m;
+  int n;
+  int k;
+};
+
 // Scop associated with fixed block and grid dimensions.
 //
 // Different branches of the schedule tree may be mapped to GPU blocks or
@@ -124,6 +134,13 @@ class MappedScop {
  public:
   const uint64_t unroll;
 };
+
+// Mappings from isl ids used by mark nodes to the metadata to
+// generated the replacement code
+struct TacticsReplacements {
+  std::unordered_map<isl::id, MatMulInfo, isl::IslIdIslHash> matmul;
+};
+
 
 } // namespace tactics
 } // namespace polyhedral

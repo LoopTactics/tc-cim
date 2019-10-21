@@ -27,6 +27,7 @@
 #include "tc/core/polyhedral/body.h"
 #include "tc/core/polyhedral/codegen.h"
 #include "tc/core/polyhedral/tactics/codegen.h"
+#include "tc/core/polyhedral/tactics/tactics_optimizer.h"
 #include "tc/core/polyhedral/cuda/mapping_types.h"
 #include "tc/core/polyhedral/exceptions.h"
 #include "tc/core/polyhedral/memory_promotion.h"
@@ -123,6 +124,8 @@ struct AstPrinter {
   void emitIf(isl::ast_node_if node);
   void emitStmt(isl::ast_node_user node);
   void emitAst(isl::ast_node node);
+  void emitMark(isl::ast_node_mark mark);
+  void emitMatmulMark(isl::ast_node_mark mark);
 
  private:
   const CodegenContext& context_;
@@ -293,14 +296,24 @@ void emitUserStmt(isl::id stmtId, const CodegenStatementContext& context) {
   TC_CHECK(context.scop().halide.statements.count(stmtId))
       << "No stmt with id " << stmtId << "\n";
   auto provide = context.scop().halide.statements.at(stmtId);
+
   auto op = provide.as<Halide::Internal::Provide>();
-  TC_CHECK(op) << "Expected a Provide node: " << provide << '\n';
-  detail::emitMappedTensorAccess(op->name, op, op->args, context);
-  context.ss << " = ";
-  TC_CHECK(op->values.size() == 1)
+
+  if(op) {
+    TC_CHECK(op) << "Expected a Provide node: " << provide << '\n';
+    detail::emitMappedTensorAccess(op->name, op, op->args, context);
+    context.ss << " = ";
+    TC_CHECK(op->values.size() == 1)
       << "Multi-valued Provide: " << Halide::Internal::Stmt(provide) << "\n";
-  detail::emitHalideExpr(op->values[0], context);
-  context.ss << ";" << endl;
+    detail::emitHalideExpr(op->values[0], context);
+    context.ss << ";" << endl;
+  }
+
+  auto opCall = provide.as<Halide::Internal::Call>();
+
+  if(opCall) {
+    detail::emitHalideExpr(opCall, context);
+  }
 }
 
 void emitReductionUpdate(
@@ -452,6 +465,39 @@ void AstPrinter::emitStmt(isl::ast_node_user node) {
   }
 }
 
+void AstPrinter::emitMatmulMark(isl::ast_node_mark mark)
+{
+  isl::id markId = mark.get_id();
+  auto itMMI = context_.replacements.matmul.find(markId);
+
+  if(itMMI == context_.replacements.matmul.end())
+    LOG(FATAL) << "Could not find matmul info for mark with id " << markId;
+  
+  const MatMulInfo& mmi = itMMI->second;
+  WS ws;
+
+  context_.ss << ws.tab() << "cim_gemm("
+	      << mmi.C << ", "
+	      << mmi.alpha << ", "
+	      << mmi.A << ", "
+	      << mmi.B << ", "
+	      << mmi.m << ", "
+	      << mmi.n << ", "
+	      << mmi.k << ");" << std::endl;
+}
+
+void AstPrinter::emitMark(isl::ast_node_mark mark)
+{
+    isl::id markId = mark.get_id();
+    const std::string markType = markId.get_name();
+
+    if(markType == "__tactics_gemm") {
+      emitMatmulMark(mark);
+    } else {
+      LOG(FATAL) << "Unsupported mark type: " << markType;
+    }
+}
+
 void AstPrinter::emitAst(isl::ast_node node) {
   if (auto forNode = node.as<isl::ast_node_for>()) {
     emitFor(forNode);
@@ -461,9 +507,8 @@ void AstPrinter::emitAst(isl::ast_node node) {
     for (auto child : blockNode.get_children()) {
       emitAst(child);
     }
-  } else if (node.as<isl::ast_node_mark>()) {
-    TC_CHECK(false) << "mark";
-    // emitAst(node.mark_get_node());
+  } else if (auto mark = node.as<isl::ast_node_mark>()) {
+    emitMark(mark);
   } else if (auto userNode = node.as<isl::ast_node_user>()) {
     emitStmt(userNode);
   } else {
@@ -724,6 +769,7 @@ string emitTacticsKernel(
   // Expecting a schedule with domain root and context first child.
   TC_CHECK(mscop.schedule()->as<ScheduleTreeDomain>());
   TC_CHECK(mscop.schedule()->child({0})->as<ScheduleTreeContext>());
+
   const auto& scop = mscop.scop();
 
   // Make a map of the specialized scalar parameter values
@@ -766,14 +812,16 @@ string emitTacticsKernel(
     return collectIteratorMaps(n, b, &nodeInfoMap);
   };
 
-  auto schedule = toIslSchedule(mscop.schedule());
+  TacticsReplacements replacements;
+  auto schedule = optimizeGemmSchedule(mscop, replacements);
   auto astBuild = isl::ast_build(schedule.get_ctx());
   astBuild = astBuild.set_at_each_domain(collect);
-  auto root = mscop.schedule();
-  astBuild = astBuild.set_iterators(Codegen::makeLoopIterators(root));
+  
+  auto root = ::tc::polyhedral::detail::fromIslSchedule(schedule);
+
   auto astNode = astBuild.node_from(schedule);
 
-  AstPrinter(CodegenContext(ss, mscop, nodeInfoMap))
+  AstPrinter(CodegenContext(ss, mscop, nodeInfoMap, replacements))
       .emit(astNode);
   ss << "}" << endl;
 

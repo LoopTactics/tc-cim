@@ -206,6 +206,7 @@ add_library(
   # Files needed for execution
   polyhedral/tactics/mapped_scop.cc
   polyhedral/tactics/codegen.cc
+  polyhedral/tactics/tactics_optimizer.cc
   tactics/tactics_mapping_options.cc
   tactics/tactics_mapping_options_cpp_printer.cc
   tactics/tactics_tc_executor.cc
