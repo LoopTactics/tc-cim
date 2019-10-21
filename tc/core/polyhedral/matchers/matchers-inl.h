@@ -170,7 +170,12 @@ DEF_TYPE_MATCHER(set, ScheduleNodeType::Set)
     matcher.current_ = type;                                                   \
     matcher.needToCapture_ = x;                                                \
     matcher.children_.emplace_back(child);                                     \
-    matcher.capture_ = capture;                                                \
+									       \
+    if(capture.get() == nullptr)                                               \
+      matcher.capture_ = isl::schedule_node();                                 \
+    else                                                                       \
+      matcher.capture_ = capture;	                                       \
+									       \
     return matcher;                                                            \
   }                                                                            \
                                                                                \
