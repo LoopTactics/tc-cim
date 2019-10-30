@@ -269,8 +269,13 @@ std::unique_ptr<ScheduleTree> elemFromIslScheduleNode(isl::schedule_node node) {
     LOG(FATAL) << "guard nodes not supported";
     return nullptr;
   } else if (auto mark = node.as<isl::schedule_node_mark>()) {
-    LOG(FATAL) << "mark nodes not supported";
-    return nullptr;
+    if(mark.n_children() != 1) {
+      LOG(FATAL) << "mark nodes with more than one child are not supported";
+      return nullptr;
+    }
+
+    // Just skip the mark node and process child node
+    return elemFromIslScheduleNode(mark.child(0));
   } else if (node.isa<isl::schedule_node_leaf>()) {
     LOG(FATAL) << "ScheduleTree::make called on explicit leaf";
     return nullptr;
