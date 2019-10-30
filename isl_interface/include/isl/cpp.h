@@ -3019,6 +3019,7 @@ public:
   inline space domain() const;
   inline space domain_map() const;
   inline space domain_product(space right) const;
+  inline int find_dim_by_name(isl::dim type, const std::string& name) const;
   inline space from_domain() const;
   inline space from_range() const;
   inline id get_map_range_tuple_id() const;
@@ -17374,6 +17375,12 @@ std::string space::get_tuple_name(isl::dim type) const
   auto res = isl_space_get_tuple_name(get(), static_cast<enum isl_dim_type>(type));
   std::string tmp(res);
   return tmp;
+}
+
+int space::find_dim_by_name(isl::dim type, const std::string& name) const
+{
+  auto res = isl_space_find_dim_by_name(get(), static_cast<enum isl_dim_type>(type), name.c_str());
+  return res;
 }
 
 space manage(__isl_take isl_space *ptr) {
