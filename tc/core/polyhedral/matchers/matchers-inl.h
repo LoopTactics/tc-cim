@@ -222,6 +222,15 @@ inline ScheduleNodeMatcher leaf() {
   return matcher;
 }
 
+inline ScheduleNodeMatcher leaf(std::function<bool(isl::schedule_node)> f) {
+
+  static isl::schedule_node dummyCapture;
+  ScheduleNodeMatcher matcher(dummyCapture);
+  matcher.current_ = ScheduleNodeType::Leaf;
+  matcher.nodeCallback_ = f;
+  return matcher;
+}
+
 inline ScheduleNodeMatcher leaf(isl::schedule_node &capture) {
   ScheduleNodeMatcher matcher(capture);
   matcher.needToCapture_ = true;

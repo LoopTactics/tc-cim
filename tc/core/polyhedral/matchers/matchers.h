@@ -302,6 +302,10 @@ ScheduleNodeMatcher expansion(std::function<bool(isl::schedule_node)> callback,
                               ScheduleNodeMatcher &&child);
 /// Create a matcher of type leaf.
 ScheduleNodeMatcher leaf();
+/// Create a matcher of type leaf.
+///
+/// @param callback 
+ScheduleNodeMatcher leaf(std::function<bool(isl::schedule_node)> callback);
 /// Create a matcher of type leaf. The matcher will
 /// capture the target node
 ///
@@ -401,6 +405,7 @@ class ScheduleNodeMatcher {
 
   friend ScheduleNodeMatcher leaf();
   friend ScheduleNodeMatcher leaf(isl::schedule_node &);
+  friend ScheduleNodeMatcher leaf(std::function<bool(isl::schedule_node)> f);
   friend ScheduleNodeMatcher anyTree();
   friend ScheduleNodeMatcher anyTree(isl::schedule_node &);
   // friend ScheduleNodeMatcher
