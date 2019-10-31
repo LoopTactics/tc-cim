@@ -813,7 +813,10 @@ string emitTacticsKernel(
   };
 
   TacticsReplacements replacements;
-  auto schedule = optimizeGemmSchedule(mscop, replacements);
+  // TODO: how do we want to fire the rules?
+  // assing a priority?
+  //auto schedule = optimizeGemmSchedule(mscop, replacements);
+  auto schedule = optimizeGemvSchedule(mscop, replacements);
   auto astBuild = isl::ast_build(schedule.get_ctx());
   astBuild = astBuild.set_at_each_domain(collect);
   
