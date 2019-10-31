@@ -45,6 +45,25 @@ struct MatMulInfo {
   int k;
 };
 
+struct GemvInfo {
+
+  std::string readFromA;
+  std::string readFromX;
+  std::string readFromY;
+  std::string writeToY;
+
+  // what about beta?
+  std::string alpha;
+  
+  int m;
+  int n;
+
+  int i = -1;
+  int j = -1;
+
+  bool isAtranspose = false;
+};
+
 // Scop associated with fixed block and grid dimensions.
 //
 // Different branches of the schedule tree may be mapped to GPU blocks or
