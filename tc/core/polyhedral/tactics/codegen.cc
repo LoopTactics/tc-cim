@@ -26,14 +26,14 @@
 #include "tc/core/flags.h"
 #include "tc/core/polyhedral/body.h"
 #include "tc/core/polyhedral/codegen.h"
-#include "tc/core/polyhedral/tactics/codegen.h"
-#include "tc/core/polyhedral/tactics/tactics_optimizer.h"
 #include "tc/core/polyhedral/cuda/mapping_types.h"
 #include "tc/core/polyhedral/exceptions.h"
 #include "tc/core/polyhedral/memory_promotion.h"
 #include "tc/core/polyhedral/schedule_isl_conversion.h"
 #include "tc/core/polyhedral/schedule_transforms.h"
 #include "tc/core/polyhedral/scop.h"
+#include "tc/core/polyhedral/tactics/codegen.h"
+#include "tc/core/polyhedral/tactics/tactics_optimizer.h"
 
 using namespace std;
 
@@ -148,7 +148,7 @@ vector<pair<string, string>> emitParams(const Scop& scop) {
 
     res.push_back(make_pair(sname, stype));
   }
-      
+
   return res;
 }
 
@@ -160,7 +160,7 @@ pair<string, string> emitTypedTensorName(
   sstype << (constInput ? "const " : "") << halideTypeString(t.type()) << "*";
 
   string sname = makePointerName(t.name());
-  
+
   return make_pair(sname, sstype.str());
 }
 
@@ -174,7 +174,8 @@ vector<pair<string, string>> emitTypedTensorNames(
   return res;
 }
 
-vector<pair<string, string>> emitTypedTensorNames(const vector<Halide::ImageParam>& tensors) {
+vector<pair<string, string>> emitTypedTensorNames(
+    const vector<Halide::ImageParam>& tensors) {
   vector<pair<string, string>> res;
   res.reserve(tensors.size());
   for (auto t : tensors) {
@@ -244,9 +245,8 @@ void emitTensorView(
   ss << (constInput ? "const " : "") << halideTypeString(p.type()) << " (*"
      << p.name() << ")" << ssViewType.str();
   ss << " = ";
-  ss << "(" << (constInput ? "const " : "")
-     << halideTypeString(p.type()) << " (*)" << ssViewType.str() << ")"
-     << makePointerName(p.name()) << ";";
+  ss << "(" << (constInput ? "const " : "") << halideTypeString(p.type())
+     << " (*)" << ssViewType.str() << ")" << makePointerName(p.name()) << ";";
   ss << endl;
 }
 
@@ -300,19 +300,19 @@ void emitUserStmt(isl::id stmtId, const CodegenStatementContext& context) {
 
   auto op = provide.as<Halide::Internal::Provide>();
 
-  if(op) {
+  if (op) {
     TC_CHECK(op) << "Expected a Provide node: " << provide << '\n';
     detail::emitMappedTensorAccess(op->name, op, op->args, context);
     context.ss << " = ";
     TC_CHECK(op->values.size() == 1)
-      << "Multi-valued Provide: " << Halide::Internal::Stmt(provide) << "\n";
+        << "Multi-valued Provide: " << Halide::Internal::Stmt(provide) << "\n";
     detail::emitHalideExpr(op->values[0], context);
     context.ss << ";" << endl;
   }
 
   auto opCall = provide.as<Halide::Internal::Call>();
 
-  if(opCall) {
+  if (opCall) {
     detail::emitHalideExpr(opCall, context);
   }
 }
@@ -466,57 +466,47 @@ void AstPrinter::emitStmt(isl::ast_node_user node) {
   }
 }
 
-void AstPrinter::emitMatmulMark(isl::ast_node_mark mark)
-{
+void AstPrinter::emitMatmulMark(isl::ast_node_mark mark) {
   isl::id markId = mark.get_id();
   auto itMMI = context_.replacements.matmul.find(markId);
 
-  if(itMMI == context_.replacements.matmul.end())
+  if (itMMI == context_.replacements.matmul.end())
     LOG(FATAL) << "Could not find matmul info for mark with id " << markId;
-  
+
   const MatMulInfo& mmi = itMMI->second;
   WS ws;
 
-  context_.ss << ws.tab() << "cim_gemm("
-	      << mmi.C << ", "
-	      << mmi.alpha << ", "
-	      << mmi.A << ", "
-	      << mmi.B << ", "
-	      << mmi.m << ", "
-	      << mmi.n << ", "
-	      << mmi.k << ");" << std::endl;
+  context_.ss << ws.tab() << "cim_gemm(" << mmi.C << ", " << mmi.alpha << ", "
+              << mmi.A << ", " << mmi.B << ", " << mmi.m << ", " << mmi.n
+              << ", " << mmi.k << ");" << std::endl;
 }
 
 void AstPrinter::emitGemvMark(isl::ast_node_mark mark) {
-
   isl::id markId = mark.get_id();
-  void *user = isl_id_get_user(markId.get()); 
-  GemvInfo *payload = static_cast<GemvInfo *>(user);
+  void* user = isl_id_get_user(markId.get());
+  GemvInfo* payload = static_cast<GemvInfo*>(user);
 
   WS ws;
 
-  context_.ss << ws.tab() << "cim_gemv("
-    << payload->writeToY << ","
-    << payload->readFromX << ","
-    << payload->readFromA << ");" << std::endl;
-  
-  delete payload; 
+  context_.ss << ws.tab() << "cim_gemv(" << payload->writeToY << ","
+              << payload->readFromX << "," << payload->readFromA << ");"
+              << std::endl;
+
+  delete payload;
 }
 
-void AstPrinter::emitMark(isl::ast_node_mark mark)
-{
-    isl::id markId = mark.get_id();
-    const std::string markType = markId.get_name();
+void AstPrinter::emitMark(isl::ast_node_mark mark) {
+  isl::id markId = mark.get_id();
+  const std::string markType = markId.get_name();
 
-    if(markType == "__tactics_gemm") {
-      emitMatmulMark(mark);
-    } 
-    if (markType == "__tactics_mvt") {
-      emitGemvMark(mark);
-    }
-    else {
-      LOG(FATAL) << "Unsupported mark type: " << markType;
-    }
+  if (markType == "__tactics_gemm") {
+    emitMatmulMark(mark);
+  }
+  if (markType == "__tactics_mvt") {
+    emitGemvMark(mark);
+  } else {
+    LOG(FATAL) << "Unsupported mark type: " << markType;
+  }
 }
 
 void AstPrinter::emitAst(isl::ast_node node) {
@@ -836,11 +826,11 @@ string emitTacticsKernel(
   TacticsReplacements replacements;
   // TODO: how do we want to fire the rules?
   // assing a priority?
-  //auto schedule = optimizeGemmSchedule(mscop, replacements);
+  // auto schedule = optimizeGemmSchedule(mscop, replacements);
   auto schedule = optimizeGemvSchedule(mscop);
   auto astBuild = isl::ast_build(schedule.get_ctx());
   astBuild = astBuild.set_at_each_domain(collect);
-  
+
   auto root = ::tc::polyhedral::detail::fromIslSchedule(schedule);
 
   auto astNode = astBuild.node_from(schedule);
@@ -853,8 +843,8 @@ string emitTacticsKernel(
 }
 
 string emitTacticsEntryPoint(
-   const std::string& specializedName,
-   const MappedScop& mscop) {
+    const std::string& specializedName,
+    const MappedScop& mscop) {
   stringstream ss;
 
   const auto& scop = mscop.scop();
@@ -863,20 +853,23 @@ string emitTacticsEntryPoint(
   sigVec = sigVec + emitTypedTensorNames(scop.halide.inputs);
 
   ss << "void tactics_entrypoint(void** args, size_t num_args) {" << std::endl;
-  
+
   ss << "  if(num_args != " << sigVec.size() << ") {" << std::endl
      << "    fprintf(stderr, \"Wrong number of arguments:\"" << std::endl
      << "                    \"Expected %zu, but got %zu\\n\", " << std::endl
-     << "                    (size_t)" << sigVec.size() << ", num_args);" << std::endl
+     << "                    (size_t)" << sigVec.size() << ", num_args);"
+     << std::endl
      << "    exit(1);" << std::endl
-     << "  }" << std::endl << std::endl;
+     << "  }" << std::endl
+     << std::endl;
 
   int i = 0;
   for (auto& s : sigVec) {
     string& sname = s.first;
     string& stype = s.second;
 
-    ss << "  " << stype << " " << sname << " = *((" << stype << "*)args[" << i << "]);" << std::endl;
+    ss << "  " << stype << " " << sname << " = *((" << stype << "*)args[" << i
+       << "]);" << std::endl;
 
     ++i;
   }
@@ -889,19 +882,19 @@ string emitTacticsEntryPoint(
     string& sname = s.first;
 
     ss << sname;
-    
+
     if (s != sigVec.back()) {
       ss << ", ";
     }
   }
 
   ss << ");" << std::endl;
-  
+
   ss << "}" << std::endl;
 
   return ss.str();
 }
-  
+
 } // namespace tactics
 } // namespace polyhedral
 } // namespace tc

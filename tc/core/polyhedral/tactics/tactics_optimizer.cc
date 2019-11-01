@@ -1,9 +1,9 @@
 #include "tc/core/polyhedral/tactics/tactics_optimizer.h"
+#include <iostream>
 #include "tc/core/polyhedral/matchers/access.h"
 #include "tc/core/polyhedral/matchers/access_patterns.h"
 #include "tc/core/polyhedral/matchers/matchers.h"
 #include "tc/core/polyhedral/schedule_isl_conversion.h"
-#include <iostream>
 
 namespace tc {
 namespace polyhedral {
@@ -578,12 +578,14 @@ isl::schedule optimizeGemmSchedule(
 }
 
 // wrap sub-tree in case of match. If "node" matches with
-// "pattern" then wrap node and it's subtree with a mark node
+// "pattern" then wrap node and it's sub-tree with a mark node
 // named "marker".
 template <typename T>
-isl::schedule_node wrapPatternIfMatches(isl::schedule_node node,
-  const matchers::ScheduleNodeMatcher &pattern, std::string marker, T &p) {
-
+isl::schedule_node wrapPatternIfMatches(
+    isl::schedule_node node,
+    const matchers::ScheduleNodeMatcher& pattern,
+    std::string marker,
+    T& p) {
   if (matchers::ScheduleNodeMatcher::isMatching(pattern, node)) {
     node = node.insert_mark(isl::id::alloc(node.get_ctx(), marker, new T{p}));
   }
@@ -592,12 +594,14 @@ isl::schedule_node wrapPatternIfMatches(isl::schedule_node node,
 }
 
 // walk schedule tree starting from "node". If "node"
-// matches with "pattern" wrap the sub-tree with a 
+// matches with "pattern" wrap the sub-tree with a
 // mark node named "marker".
 template <typename T>
-isl::schedule_node wrapOnMatch(isl::schedule_node node,
-  const matchers::ScheduleNodeMatcher &pattern, std::string marker, T &p) {
-
+isl::schedule_node wrapOnMatch(
+    isl::schedule_node node,
+    const matchers::ScheduleNodeMatcher& pattern,
+    std::string marker,
+    T& p) {
   node = wrapPatternIfMatches(node, pattern, marker, p);
 
   // break recursion
@@ -611,43 +615,45 @@ isl::schedule_node wrapOnMatch(isl::schedule_node node,
 }
 
 // get read and write accesses restricted to "node".
-std::pair<isl::union_map, isl::union_map> 
-  getReadsAndWritesForNode(const MappedScop &scop, isl::schedule_node node) {
-
-  auto &lscop = scop.scop();
-  auto reads = lscop.body.reads.curry() 
-    .apply_domain(node.get_prefix_schedule_union_map());
-  auto writes = lscop.body.writes.curry()
-    .apply_domain(node.get_prefix_schedule_union_map()); 
+std::pair<isl::union_map, isl::union_map> getReadsAndWritesForNode(
+    const MappedScop& scop,
+    isl::schedule_node node) {
+  auto& lscop = scop.scop();
+  auto reads = lscop.body.reads.curry().apply_domain(
+      node.get_prefix_schedule_union_map());
+  auto writes = lscop.body.writes.curry().apply_domain(
+      node.get_prefix_schedule_union_map());
   return std::make_pair(reads, writes);
 }
 
 // make sure we are dealing with a reduction with + and *.
-static bool checkOperationsInGemvCore(const MappedScop &scop,
-  isl::schedule_node leaf) {
+static bool checkOperationsInGemvCore(
+    const MappedScop& scop,
+    isl::schedule_node leaf) {
+  auto& lscop = scop.scop();
 
-  auto &lscop = scop.scop();
-  
-  const Halide::Internal::Stmt &stmt = GemmOptimizer::getHalideStatement(lscop, leaf);
-  const Halide::Internal::Provide *coreProvide = stmt.as<Halide::Internal::Provide>();
+  const Halide::Internal::Stmt& stmt =
+      GemmOptimizer::getHalideStatement(lscop, leaf);
+  const Halide::Internal::Provide* coreProvide =
+      stmt.as<Halide::Internal::Provide>();
 
   if ((!coreProvide) || (coreProvide->args.size() != 1))
     return false;
 
   // check reduction.
-  const Halide::Internal::Call *reductionCall =
-    coreProvide->values[0].as<Halide::Internal::Call>();
-  
-  if ((!reductionCall) || (!reductionCall->is_intrinsic("ReductionUpdate"))
-      || (reductionCall->args.size() != 1))
+  const Halide::Internal::Call* reductionCall =
+      coreProvide->values[0].as<Halide::Internal::Call>();
+
+  if ((!reductionCall) || (!reductionCall->is_intrinsic("ReductionUpdate")) ||
+      (reductionCall->args.size() != 1))
     return false;
 
   // check addition for reduction.
-  const Halide::Internal::Add *add =
-    reductionCall->args[0].as<Halide::Internal::Add>();
-  if (!add) 
+  const Halide::Internal::Add* add =
+      reductionCall->args[0].as<Halide::Internal::Add>();
+  if (!add)
     return false;
-  
+
   if (!(add->a.as<Halide::Internal::Mul>()) &&
       !(add->b.as<Halide::Internal::Mul>()))
     return false;
@@ -655,32 +661,34 @@ static bool checkOperationsInGemvCore(const MappedScop &scop,
   return true;
 }
 
-// check operations in gemv initialization statement. 
+// check operations in GEMV initialization statement.
 // LHS must be a single-dimensional access. (maybe remove? done with access
 // relation matchers).
 // RHS single constant.
-static bool checkOperationsInGemvInit(const MappedScop &scop,
-  isl::schedule_node leaf) {
-
-  auto &lscop = scop.scop();
+static bool checkOperationsInGemvInit(
+    const MappedScop& scop,
+    isl::schedule_node leaf) {
+  auto& lscop = scop.scop();
 
   // get Halide stmt.
   // TODO: move out from GemmOptimizer?
-  const Halide::Internal::Stmt &stmt = GemmOptimizer::getHalideStatement(lscop, leaf);
-  const Halide::Internal::Provide *initProvide = stmt.as<Halide::Internal::Provide>(); 
-  
+  const Halide::Internal::Stmt& stmt =
+      GemmOptimizer::getHalideStatement(lscop, leaf);
+  const Halide::Internal::Provide* initProvide =
+      stmt.as<Halide::Internal::Provide>();
+
   if ((!initProvide) || (initProvide->args.size() != 1)) {
     return false;
   }
-  
+
   // RHS of initialization must be a single constant.
   if (initProvide->values.size() != 1) {
     return false;
   }
 
-  const Halide::Internal::FloatImm* initVal = 
-    initProvide->values[0].as<Halide::Internal::FloatImm>();
-  
+  const Halide::Internal::FloatImm* initVal =
+      initProvide->values[0].as<Halide::Internal::FloatImm>();
+
   if ((!initVal) || (initVal->value != 0.0)) {
     return false;
   }
@@ -689,12 +697,11 @@ static bool checkOperationsInGemvInit(const MappedScop &scop,
 
 // get the array name from "map"
 static std::string getName(isl::map map) {
-
   if (map.can_uncurry())
     map = map.uncurry();
-  
+
   isl::set set = map.range();
-  
+
   if (set.has_tuple_id())
     return set.get_tuple_id().to_str();
 
@@ -702,22 +709,21 @@ static std::string getName(isl::map map) {
   return "nullptr";
 }
 
-template<class T, class...>
-struct are_same : std::true_type
-{};
+template <class T, class...>
+struct are_same : std::true_type {};
 
-template<class T, class U, class... TT>
+template <class T, class U, class... TT>
 struct are_same<T, U, TT...>
-    : std::integral_constant<bool, std::is_same<T,U>{} && are_same<T, TT...>{}>
-{};
+    : std::integral_constant<
+          bool,
+          std::is_same<T, U>{} && are_same<T, TT...>{}> {};
 
 // check if "a" and "b" have the same elements.
-static bool isEqual(const std::vector<int> &a, const std::vector<int> &b) {
-
+static bool isEqual(const std::vector<int>& a, const std::vector<int>& b) {
   if (a.size() != b.size())
     return false;
   if (std::equal(a.begin(), a.begin() + a.size(), b.begin()))
-    return true;  
+    return true;
   return false;
 }
 
@@ -726,10 +732,9 @@ static bool isEqual(const std::vector<int> &a, const std::vector<int> &b) {
 // we map is scheduled.
 template <typename... Args>
 static bool matchDimImpl(isl::map map, Args... args) {
-
   std::vector<int> matchedDims{args...};
   std::vector<int> mapsDims{};
-  
+
   isl::pw_multi_aff muaff = isl::pw_multi_aff::from_map(map);
 
   for (size_t i = 0; i < map.dim(isl::dim::out); i++) {
@@ -745,15 +750,14 @@ static bool matchDimImpl(isl::map map, Args... args) {
   }
 
   return isEqual(matchedDims, mapsDims);
-}    
+}
 
 // Among the maps in "maps" return the only map which has dimensions
-// that match with "args". "args" is a set of dimension matched with 
+// that match with "args". "args" is a set of dimension matched with
 // the access relation matchers. We always expect a match.
 template <typename... Args>
-static isl::map matchDim(const std::vector<isl::map> &maps, Args... args) {
-
-  for (const auto &m : maps) 
+static isl::map matchDim(const std::vector<isl::map>& maps, Args... args) {
+  for (const auto& m : maps)
     if (matchDimImpl(m, args...))
       return m;
 
@@ -766,7 +770,6 @@ static isl::map matchDim(const std::vector<isl::map> &maps, Args... args) {
 // the access relation matchers.
 template <typename... Args>
 static std::string getArrayNameFromMap(isl::union_map umap, Args... args) {
-
   static_assert(are_same<int, Args...>{}, "must be of type int");
 
   std::vector<isl::map> maps{};
@@ -779,12 +782,13 @@ static std::string getArrayNameFromMap(isl::union_map umap, Args... args) {
   return getName(result);
 }
 
-// check access pattern for initialization statement in gemv
+// check access pattern for initialization statement in GEMV
 // We expect y(i) = 0.0f
 //
-static bool hasGemvInitPatternImpl(const MappedScop &scop,
-  isl::schedule_node leaf, GemvInfo &mvi) {
-
+static bool hasGemvInitPatternImpl(
+    const MappedScop& scop,
+    isl::schedule_node leaf,
+    GemvInfo& mvi) {
   auto readsAndWrites = getReadsAndWritesForNode(scop, leaf);
   auto reads = readsAndWrites.first;
   auto writes = readsAndWrites.second;
@@ -799,37 +803,39 @@ static bool hasGemvInitPatternImpl(const MappedScop &scop,
   auto _i = placeholder(ctx);
   auto _C = arrayPlaceholder();
   auto writeMatches = match(writes, allOf(access(_C, _i)));
-  
+
   if (writeMatches.size() != 1)
     return false;
 
   bool operation = false;
   try {
     operation = checkOperationsInGemvInit(scop, leaf);
-  } catch(...) {
+  } catch (...) {
     return false;
   }
 
   if (!operation)
     return false;
 
-  mvi.writeToY = getArrayNameFromMap(writes, writeMatches[0][_i].payload().inputDimPos_); 
-  mvi.i = writeMatches[0][_i].payload().inputDimPos_; 
-  return true; 
+  mvi.writeToY =
+      getArrayNameFromMap(writes, writeMatches[0][_i].payload().inputDimPos_);
+  mvi.i = writeMatches[0][_i].payload().inputDimPos_;
+  return true;
 }
 
-// check access pattern for core statement in gemv
+// check access pattern for core statement in GEMV
 // We expect y(i) = y(i) + x(j) * A[i][j]/[j][i]
 //
-static bool hasGemvCorePatternImpl(const MappedScop &scop,
-  isl::schedule_node leaf, GemvInfo &mvi) {
-
+static bool hasGemvCorePatternImpl(
+    const MappedScop& scop,
+    isl::schedule_node leaf,
+    GemvInfo& mvi) {
   auto readsAndWrites = getReadsAndWritesForNode(scop, leaf);
   auto reads = readsAndWrites.first;
   auto writes = readsAndWrites.second;
 
   // we assume 3 reads to vector x, y and matrix A
-  // and only one write to vector y. 
+  // and only one write to vector y.
   if ((reads.n_map() != 3) && (writes.n_map() != 1))
     return false;
 
@@ -879,41 +885,42 @@ static bool hasGemvCorePatternImpl(const MappedScop &scop,
   if (!operation)
     return false;
 
-  // make sure write initialization is the same as the 
+  // make sure write initialization is the same as the
   // one in the core computation.
-  if (mvi.writeToY != 
-    getArrayNameFromMap(reads, readMatches[0][_i].payload().inputDimPos_))
+  if (mvi.writeToY !=
+      getArrayNameFromMap(reads, readMatches[0][_i].payload().inputDimPos_))
     return false;
 
   mvi.j = readMatches[0][_j].payload().inputDimPos_;
-  mvi.readFromA = getArrayNameFromMap(reads, readMatches[0][_i].payload().inputDimPos_,
-    readMatches[0][_j].payload().inputDimPos_);
-  mvi.readFromY = getArrayNameFromMap(reads, readMatches[0][_i].payload().inputDimPos_);
-  mvi.readFromX = getArrayNameFromMap(reads, readMatches[0][_j].payload().inputDimPos_);
+  mvi.readFromA = getArrayNameFromMap(
+      reads,
+      readMatches[0][_i].payload().inputDimPos_,
+      readMatches[0][_j].payload().inputDimPos_);
+  mvi.readFromY =
+      getArrayNameFromMap(reads, readMatches[0][_i].payload().inputDimPos_);
+  mvi.readFromX =
+      getArrayNameFromMap(reads, readMatches[0][_j].payload().inputDimPos_);
   return true;
 }
 
-// entry point for gemv detection.
-isl::schedule optimizeGemvSchedule(const MappedScop &scop) {
-
+// entry point for GEMV detection.
+isl::schedule optimizeGemvSchedule(const MappedScop& scop) {
   isl::schedule schedule = toIslSchedule(scop.schedule());
-  isl::schedule_node root = schedule.get_root(); 
+  isl::schedule_node root = schedule.get_root();
   GemvInfo mvi;
 
   auto hasGemvInitPattern = [&](isl::schedule_node leaf) {
-  
     return hasGemvInitPatternImpl(scop, leaf, mvi);
   };
 
   auto hasGemvCorePattern = [&](isl::schedule_node leaf) {
-    
     return hasGemvCorePatternImpl(scop, leaf, mvi);
-  }; 
+  };
 
   // The shape of the calculation for the supported matrix-vector
   // multiplication includes an initialization of the output vector
   // y with zeros and the actual core multiplications of the elements
-  // 
+  //
   // for (int i = 0; i <= M; i++) {
   //  y[i] = 0.0f
   //  for (int j = 0; j <= N; j++)
@@ -935,7 +942,6 @@ isl::schedule optimizeGemvSchedule(const MappedScop &scop) {
   root = wrapOnMatch(root, matcher, "__tactics_mvt", mvi).root();
   return root.get_schedule();
 }
-
 
 } // namespace tactics
 } // namespace polyhedral

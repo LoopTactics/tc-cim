@@ -22,8 +22,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "tc/core/tactics/tactics_mapping_options.h"
 #include "tc/core/polyhedral/scop.h"
+#include "tc/core/tactics/tactics_mapping_options.h"
 #include "tc/core/tensor.h"
 #include "tc/external/isl.h"
 
@@ -46,27 +46,26 @@ struct MatMulInfo {
 };
 
 class GemvInfo {
+ public:
+  GemvInfo() = default;
+  GemvInfo(const GemvInfo& g) = default;
 
-  public:
-    GemvInfo() = default;
-    GemvInfo(const GemvInfo &g) = default;
-      
-  public:
-    std::string readFromA = "nullptr";
-    std::string readFromX = "nullptr";
-    std::string readFromY = "nullptr";
-    std::string writeToY = "nullptr";
+ public:
+  std::string readFromA = "nullptr";
+  std::string readFromX = "nullptr";
+  std::string readFromY = "nullptr";
+  std::string writeToY = "nullptr";
 
-    std::string beta = "1";
-    std::string alpha = "1";
-  
-    int m = -1;
-    int n = -1;
+  std::string beta = "1";
+  std::string alpha = "1";
 
-    int i = -1;
-    int j = -1;
+  int m = -1;
+  int n = -1;
 
-    bool isAtranspose = false;
+  int i = -1;
+  int j = -1;
+
+  bool isAtranspose = false;
 
   // what about the type FLOAT or DOUBLE?
 };
@@ -97,19 +96,17 @@ class GemvInfo {
 // elements incompatible with other Scop modifications.
 class MappedScop {
  private:
-  MappedScop(
-      std::unique_ptr<Scop>&& scop, uint64_t unroll_)
-      : scop_(std::move(scop)), unroll(unroll_)
-  {}
+  MappedScop(std::unique_ptr<Scop>&& scop, uint64_t unroll_)
+      : scop_(std::move(scop)), unroll(unroll_) {}
 
  public:
   // The MappedScop returned by this method does not satisfy the invariant
   // of having a mapping to blocks and threads.  It is up to the caller
   // to insert these mappings.
   static inline std::unique_ptr<MappedScop> makeMappedScop(
-      std::unique_ptr<Scop>&& scop, uint64_t unroll) {
-    return std::unique_ptr<MappedScop>(
-        new MappedScop(std::move(scop), unroll));
+      std::unique_ptr<Scop>&& scop,
+      uint64_t unroll) {
+    return std::unique_ptr<MappedScop>(new MappedScop(std::move(scop), unroll));
   }
 
   // Prepare for sequential code
@@ -166,7 +163,6 @@ class MappedScop {
 struct TacticsReplacements {
   std::unordered_map<isl::id, MatMulInfo, isl::IslIdIslHash> matmul;
 };
-
 
 } // namespace tactics
 } // namespace polyhedral

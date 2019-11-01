@@ -21,8 +21,8 @@
 #include <unordered_map>
 
 #include "tc/core/halide2isl.h"
-#include "tc/core/polyhedral/tactics/mapped_scop.h"
 #include "tc/core/polyhedral/scop.h"
+#include "tc/core/polyhedral/tactics/mapped_scop.h"
 #include "tc/external/isl.h"
 
 namespace tc {
@@ -87,14 +87,12 @@ struct CodegenContext {
       const MappedScop& s,
       const NodeInfoMapType& i,
       const TacticsReplacements& replacements)
-    : ss(ss_), mappedScop(s), nodeInfoMap(i), replacements(replacements)
-  {}
+      : ss(ss_), mappedScop(s), nodeInfoMap(i), replacements(replacements) {}
   CodegenContext(const CodegenContext& c)
       : ss(c.ss),
         mappedScop(c.mappedScop),
         nodeInfoMap(c.nodeInfoMap),
-	replacements(c.replacements)
-  {}
+        replacements(c.replacements) {}
 
   const Scop& scop() const {
     return mappedScop.scop();

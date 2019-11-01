@@ -29,7 +29,6 @@
 #include "tc/core/flags.h"
 #include "tc/core/functional.h"
 #include "tc/core/gpu.h"
-#include "tc/core/polyhedral/tactics/codegen.h"
 #include "tc/core/polyhedral/cuda/mapping_types.h"
 #include "tc/core/polyhedral/exceptions.h"
 #include "tc/core/polyhedral/schedule_transforms.h"
@@ -37,6 +36,7 @@
 #include "tc/core/polyhedral/schedule_utils.h"
 #include "tc/core/polyhedral/scop.h"
 #include "tc/core/polyhedral/separation.h"
+#include "tc/core/polyhedral/tactics/codegen.h"
 #include "tc/core/polyhedral/unroll.h"
 #include "tc/core/scope_guard.h"
 
@@ -52,7 +52,6 @@ namespace polyhedral {
 namespace tactics {
 
 namespace {
-
 
 template <typename ExceptionType>
 inline void throwIfHasPattern(
@@ -114,8 +113,9 @@ std::string MappedScop::codegen(const std::string& specializedName) const {
 
   code << "#include <stdarg.h>" << std::endl
        << "#include <stdio.h>" << std::endl
-       << "#include <stdlib.h>" << std::endl << std::endl;
-  
+       << "#include <stdlib.h>" << std::endl
+       << std::endl;
+
   code << code::c::minmax << std::endl;
 
   if (mappedScopForCodegen->scop().treeSyncUpdateMap.size() != 0) {
@@ -124,22 +124,22 @@ std::string MappedScop::codegen(const std::string& specializedName) const {
   code << emitTacticsKernel(specializedName, *mappedScopForCodegen)
        << std::endl;
 
-  code << emitTacticsEntryPoint(specializedName, *mappedScopForCodegen) << std::endl;
+  code << emitTacticsEntryPoint(specializedName, *mappedScopForCodegen)
+       << std::endl;
 
   return code.str();
 }
 
 std::unique_ptr<MappedScop> MappedScop::makeWithSequentialStrategy(
-     std::unique_ptr<Scop>&& scopUPtr,
-     const TacticsMappingOptions& mappingOptions)
-{
+    std::unique_ptr<Scop>&& scopUPtr,
+    const TacticsMappingOptions& mappingOptions) {
   using namespace polyhedral::detail;
 
   const auto& generic = mappingOptions.generic;
 
   // 1 block, 1 thread, no readonly cache
   auto mappedScop = std::unique_ptr<MappedScop>(
-        new MappedScop(std::move(scopUPtr), generic.proto.unroll()));
+      new MappedScop(std::move(scopUPtr), generic.proto.unroll()));
   auto& scop = mappedScop->scop_;
 
   // 1a. Optionally specialize before scheduling...
