@@ -45,23 +45,30 @@ struct MatMulInfo {
   int k;
 };
 
-struct GemvInfo {
+class GemvInfo {
 
-  std::string readFromA;
-  std::string readFromX;
-  std::string readFromY;
-  std::string writeToY;
+  public:
+    GemvInfo() = default;
+    GemvInfo(const GemvInfo &g) = default;
+      
+  public:
+    std::string readFromA = "nullptr";
+    std::string readFromX = "nullptr";
+    std::string readFromY = "nullptr";
+    std::string writeToY = "nullptr";
 
-  // what about beta?
-  std::string alpha;
+    std::string beta = "1";
+    std::string alpha = "1";
   
-  int m;
-  int n;
+    int m = -1;
+    int n = -1;
 
-  int i = -1;
-  int j = -1;
+    int i = -1;
+    int j = -1;
 
-  bool isAtranspose = false;
+    bool isAtranspose = false;
+
+  // what about the type FLOAT or DOUBLE?
 };
 
 // Scop associated with fixed block and grid dimensions.

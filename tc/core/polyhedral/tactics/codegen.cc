@@ -126,6 +126,7 @@ struct AstPrinter {
   void emitAst(isl::ast_node node);
   void emitMark(isl::ast_node_mark mark);
   void emitMatmulMark(isl::ast_node_mark mark);
+  void emitGemvMark(isl::ast_node_mark mark);
 
  private:
   const CodegenContext& context_;
@@ -486,6 +487,22 @@ void AstPrinter::emitMatmulMark(isl::ast_node_mark mark)
 	      << mmi.k << ");" << std::endl;
 }
 
+void AstPrinter::emitGemvMark(isl::ast_node_mark mark) {
+
+  isl::id markId = mark.get_id();
+  void *user = isl_id_get_user(markId.get()); 
+  GemvInfo *payload = static_cast<GemvInfo *>(user);
+
+  WS ws;
+
+  context_.ss << ws.tab() << "cim_gemv("
+    << payload->writeToY << ","
+    << payload->readFromX << ","
+    << payload->readFromA << ");" << std::endl;
+  
+  delete payload; 
+}
+
 void AstPrinter::emitMark(isl::ast_node_mark mark)
 {
     isl::id markId = mark.get_id();
@@ -493,7 +510,11 @@ void AstPrinter::emitMark(isl::ast_node_mark mark)
 
     if(markType == "__tactics_gemm") {
       emitMatmulMark(mark);
-    } else {
+    } 
+    if (markType == "__tactics_mvt") {
+      emitGemvMark(mark);
+    }
+    else {
       LOG(FATAL) << "Unsupported mark type: " << markType;
     }
 }
@@ -816,7 +837,7 @@ string emitTacticsKernel(
   // TODO: how do we want to fire the rules?
   // assing a priority?
   //auto schedule = optimizeGemmSchedule(mscop, replacements);
-  auto schedule = optimizeGemvSchedule(mscop, replacements);
+  auto schedule = optimizeGemvSchedule(mscop);
   auto astBuild = isl::ast_build(schedule.get_ctx());
   astBuild = astBuild.set_at_each_domain(collect);
   

@@ -10,8 +10,7 @@ namespace tactics {
 isl::schedule optimizeGemmSchedule(const MappedScop& scop,
 				   TacticsReplacements& replacements);
 
-isl::schedule optimizeGemvSchedule(const MappedScop &scop,
-           TacticsReplacements& replacements);
+isl::schedule optimizeGemvSchedule(const MappedScop &scop);
 
 } // namespace tactics
 } // namespace polyhedral
