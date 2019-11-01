@@ -480,6 +480,7 @@ public:
   static inline aff zero_on_domain(space space);
   static inline aff var_on_domain(local_space ls, isl::dim type, unsigned int pos);
   typedef isl_aff* isl_ptr_t;
+  inline val get_coefficient_val(isl::dim type, int pos) const;
 };
 
 // declarations for isl::aff_list
@@ -3627,6 +3628,13 @@ public:
 };
 
 // implementations for isl::aff
+
+val aff::get_coefficient_val(isl::dim type, int pos) const
+{
+  auto res = isl_aff_get_coefficient_val(get(), static_cast<enum isl_dim_type>(type), pos);
+  return manage(res);
+}
+
 aff aff::var_on_domain(local_space ls, isl::dim type, unsigned int pos)
 {
   auto res = isl_aff_var_on_domain(ls.release(), static_cast<enum isl_dim_type>(type), pos);
