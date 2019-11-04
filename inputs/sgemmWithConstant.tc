@@ -1,0 +1,4 @@
+def sgemm(float alpha, float(N,M) A, float(M,K) B) -> (C)
+{
+  C(i,j) +=! alpha * A(i,k) * B(k, j)
+}
