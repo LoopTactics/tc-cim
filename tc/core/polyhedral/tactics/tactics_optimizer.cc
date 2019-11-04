@@ -798,8 +798,12 @@ static std::string getArrayNameFromMap(isl::union_map umap, Args... args) {
 }
 
 // return true if the access has dimensionality x
-std::function<bool(isl::map)> isXd(size_t x) {
-  return [x](isl::map) { return false; };
+std::function<bool(isl::map map)> isXd(size_t x) {
+  return [x](isl::map map) { 
+    if (map.dim(isl::dim::out) != x)  
+      return false;
+    return true;
+  };
 }
 
 static bool _allOfImpl(isl::union_map umap, std::function<bool(isl::map)> f) {
