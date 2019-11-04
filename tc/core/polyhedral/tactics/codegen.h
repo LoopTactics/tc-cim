@@ -88,9 +88,7 @@ struct CodegenContext {
       const NodeInfoMapType& i)
       : ss(ss_), mappedScop(s), nodeInfoMap(i) {}
   CodegenContext(const CodegenContext& c)
-      : ss(c.ss),
-        mappedScop(c.mappedScop),
-        nodeInfoMap(c.nodeInfoMap) {}
+      : ss(c.ss), mappedScop(c.mappedScop), nodeInfoMap(c.nodeInfoMap) {}
 
   const Scop& scop() const {
     return mappedScop.scop();

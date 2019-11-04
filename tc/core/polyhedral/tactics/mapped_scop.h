@@ -36,29 +36,29 @@ class ScheduleTree;
 namespace tactics {
 
 class MatMulInfo {
-  public:
-    MatMulInfo() = default;
-    MatMulInfo(const MatMulInfo &m) = default;
+ public:
+  MatMulInfo() = default;
+  MatMulInfo(const MatMulInfo& m) = default;
 
-  public:
-    std::string readFromA = "nullptr";
-    std::string readFromB = "nullptr";
-    std::string readFromC = "nullptr";
-    std::string writeToC = "nullptr";
+ public:
+  std::string readFromA = "nullptr";
+  std::string readFromB = "nullptr";
+  std::string readFromC = "nullptr";
+  std::string writeToC = "nullptr";
 
-    std::string beta = "1";
-    std::string alpha = "1";
+  std::string beta = "1";
+  std::string alpha = "1";
 
-    int m = -1;
-    int n = -1;
-    int l = -1;
+  int m = -1;
+  int n = -1;
+  int l = -1;
 
-    int i = -1;
-    int j = -1;
-    int k = -1;
+  int i = -1;
+  int j = -1;
+  int k = -1;
 
-    bool isAtranspose = false;
-    bool isBtranspose = false;
+  bool isAtranspose = false;
+  bool isBtranspose = false;
 };
 
 class GemvInfo {
@@ -87,13 +87,13 @@ class GemvInfo {
 };
 
 class BlasInfo {
-  public:
-    BlasInfo() = default;
-  public:
-    MatMulInfo mmi;
-    GemvInfo mvi;
+ public:
+  BlasInfo() = default;
+
+ public:
+  MatMulInfo mmi;
+  GemvInfo mvi;
 };
-  
 
 // Scop associated with fixed block and grid dimensions.
 //

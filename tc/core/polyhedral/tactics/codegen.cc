@@ -467,22 +467,20 @@ void AstPrinter::emitStmt(isl::ast_node_user node) {
 }
 
 void AstPrinter::emitMatmulMark(isl::ast_node_mark mark) {
-
   isl::id markId = mark.get_id();
   void* user = isl_id_get_user(markId.get());
   MatMulInfo* payload = static_cast<MatMulInfo*>(user);
 
   WS ws;
-  
+
   context_.ss << ws.tab() << "cim_gemm(" << payload->writeToC << ","
               << payload->readFromA << "," << payload->readFromB << ");"
               << std::endl;
 
-  delete payload; 
+  delete payload;
 }
 
 void AstPrinter::emitGemvMark(isl::ast_node_mark mark) {
-
   isl::id markId = mark.get_id();
   void* user = isl_id_get_user(markId.get());
   GemvInfo* payload = static_cast<GemvInfo*>(user);
@@ -502,8 +500,7 @@ void AstPrinter::emitMark(isl::ast_node_mark mark) {
 
   if (markType == "__tactics_gemm") {
     emitMatmulMark(mark);
-  }
-  else if (markType == "__tactics_mvt") {
+  } else if (markType == "__tactics_mvt") {
     emitGemvMark(mark);
   } else {
     LOG(FATAL) << "Unsupported mark type: " << markType;
@@ -832,8 +829,7 @@ string emitTacticsKernel(
 
   auto astNode = astBuild.node_from(schedule);
 
-  AstPrinter(CodegenContext(ss, mscop, nodeInfoMap))
-      .emit(astNode);
+  AstPrinter(CodegenContext(ss, mscop, nodeInfoMap)).emit(astNode);
   ss << "}" << endl;
 
   return ss.str();
