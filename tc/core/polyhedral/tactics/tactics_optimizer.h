@@ -7,11 +7,7 @@ namespace tc {
 namespace polyhedral {
 namespace tactics {
 
-isl::schedule optimizeGemmSchedule(
-    const MappedScop& scop,
-    TacticsReplacements& replacements);
-
-isl::schedule optimizeGemvSchedule(const MappedScop& scop);
+isl::schedule detectInSchedule(const MappedScop& scop);
 
 } // namespace tactics
 } // namespace polyhedral

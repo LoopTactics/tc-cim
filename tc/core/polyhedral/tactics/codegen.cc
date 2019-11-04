@@ -467,21 +467,22 @@ void AstPrinter::emitStmt(isl::ast_node_user node) {
 }
 
 void AstPrinter::emitMatmulMark(isl::ast_node_mark mark) {
+
   isl::id markId = mark.get_id();
-  auto itMMI = context_.replacements.matmul.find(markId);
+  void* user = isl_id_get_user(markId.get());
+  MatMulInfo* payload = static_cast<MatMulInfo*>(user);
 
-  if (itMMI == context_.replacements.matmul.end())
-    LOG(FATAL) << "Could not find matmul info for mark with id " << markId;
-
-  const MatMulInfo& mmi = itMMI->second;
   WS ws;
+  
+  context_.ss << ws.tab() << "cim_gemm(" << payload->writeToC << ","
+              << payload->readFromA << "," << payload->readFromB << ");"
+              << std::endl;
 
-  context_.ss << ws.tab() << "cim_gemm(" << mmi.C << ", " << mmi.alpha << ", "
-              << mmi.A << ", " << mmi.B << ", " << mmi.m << ", " << mmi.n
-              << ", " << mmi.k << ");" << std::endl;
+  delete payload; 
 }
 
 void AstPrinter::emitGemvMark(isl::ast_node_mark mark) {
+
   isl::id markId = mark.get_id();
   void* user = isl_id_get_user(markId.get());
   GemvInfo* payload = static_cast<GemvInfo*>(user);
@@ -502,7 +503,7 @@ void AstPrinter::emitMark(isl::ast_node_mark mark) {
   if (markType == "__tactics_gemm") {
     emitMatmulMark(mark);
   }
-  if (markType == "__tactics_mvt") {
+  else if (markType == "__tactics_mvt") {
     emitGemvMark(mark);
   } else {
     LOG(FATAL) << "Unsupported mark type: " << markType;
@@ -823,11 +824,7 @@ string emitTacticsKernel(
     return collectIteratorMaps(n, b, &nodeInfoMap);
   };
 
-  TacticsReplacements replacements;
-  // TODO: how do we want to fire the rules?
-  // assing a priority?
-  // auto schedule = optimizeGemmSchedule(mscop, replacements);
-  auto schedule = optimizeGemvSchedule(mscop);
+  auto schedule = detectInSchedule(mscop);
   auto astBuild = isl::ast_build(schedule.get_ctx());
   astBuild = astBuild.set_at_each_domain(collect);
 
@@ -835,7 +832,7 @@ string emitTacticsKernel(
 
   auto astNode = astBuild.node_from(schedule);
 
-  AstPrinter(CodegenContext(ss, mscop, nodeInfoMap, replacements))
+  AstPrinter(CodegenContext(ss, mscop, nodeInfoMap))
       .emit(astNode);
   ss << "}" << endl;
 

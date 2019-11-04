@@ -85,14 +85,12 @@ struct CodegenContext {
   CodegenContext(
       std::stringstream& ss_,
       const MappedScop& s,
-      const NodeInfoMapType& i,
-      const TacticsReplacements& replacements)
-      : ss(ss_), mappedScop(s), nodeInfoMap(i), replacements(replacements) {}
+      const NodeInfoMapType& i)
+      : ss(ss_), mappedScop(s), nodeInfoMap(i) {}
   CodegenContext(const CodegenContext& c)
       : ss(c.ss),
         mappedScop(c.mappedScop),
-        nodeInfoMap(c.nodeInfoMap),
-        replacements(c.replacements) {}
+        nodeInfoMap(c.nodeInfoMap) {}
 
   const Scop& scop() const {
     return mappedScop.scop();
@@ -101,7 +99,6 @@ struct CodegenContext {
   std::stringstream& ss;
   const MappedScop& mappedScop;
   const NodeInfoMapType& nodeInfoMap;
-  const TacticsReplacements& replacements;
   //  const std::unordered_set<isl::id, isl::IslIdIslHash>& readOnlySet;
 };
 
