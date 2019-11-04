@@ -626,7 +626,6 @@ std::pair<isl::union_map, isl::union_map> getReadsAndWritesForNode(
 static bool isReduction(const Halide::Internal::Stmt& stmt) {
   const Halide::Internal::Provide* coreProvide =
       stmt.as<Halide::Internal::Provide>();
-
   if (!coreProvide)
     return false;
 
@@ -644,6 +643,8 @@ static bool isReduction(const Halide::Internal::Stmt& stmt) {
   if (!add)
     return false;
 
+  // FIXME: recursively walk the mult and make sure
+  // all the nested operations are also mult.
   if (!(add->a.as<Halide::Internal::Mul>()) &&
       !(add->b.as<Halide::Internal::Mul>()))
     return false;
@@ -806,7 +807,19 @@ std::function<bool(isl::map map)> isXd(size_t x) {
   };
 }
 
-static bool _allOfImpl(isl::union_map umap, std::function<bool(isl::map)> f) {
+std::function<bool(isl::map map)> isConstant() {
+
+  return [](isl::map map) {
+    if (map.dim(isl::dim::out) != 0)
+      return false;
+    return true;
+  };
+}
+
+// _allOf as in
+// https://www.boost.org/doc/libs/1_52_0/libs/algorithm/doc/html/algorithm/CXX11.html
+static bool _allOf(isl::union_map umap, std::function<bool(isl::map)> f) {
+  std::cout << __func__ << std::endl;
   auto unionMapAsMaps = vectorMapsFromUnionMap(umap);
   for (const auto& m : unionMapAsMaps)
     if (!f(m))
@@ -814,12 +827,15 @@ static bool _allOfImpl(isl::union_map umap, std::function<bool(isl::map)> f) {
   return true;
 }
 
-// all_of as in
-// https://www.boost.org/doc/libs/1_52_0/libs/algorithm/doc/html/algorithm/CXX11.html
-static bool _allOf(isl::union_map umap, std::function<bool(isl::map)> f) {
-  return [](isl::union_map umap, std::function<bool(isl::map)> f) {
-    return _allOfImpl(umap, f);
-  };
+// _oneOf
+static bool _oneOf(isl::union_map umap, std::function<bool(isl::map)> f) {
+  std::cout << __func__ << std::endl;
+  auto unionMapAsMaps = vectorMapsFromUnionMap(umap);
+  auto counter = 0;
+  for (const auto& m : unionMapAsMaps)
+    if (f(m))
+      counter++;
+  return counter == 1;
 }
 
 // check access pattern for initialization statement in GEMV
@@ -829,6 +845,7 @@ static bool hasGemvInitPatternImpl(
     const MappedScop& scop,
     isl::schedule_node leaf,
     GemvInfo& mvi) {
+  std::cout << __func__ << std::endl;
   auto readsAndWrites = getReadsAndWritesForNode(scop, leaf);
   auto reads = readsAndWrites.first;
   auto writes = readsAndWrites.second;
@@ -920,6 +937,7 @@ static bool hasGemvCorePatternImpl(
     const MappedScop& scop,
     isl::schedule_node leaf,
     GemvInfo& mvi) {
+  std::cout << __func__ << std::endl;
   auto readsAndWrites = getReadsAndWritesForNode(scop, leaf);
   auto reads = readsAndWrites.first;
   auto writes = readsAndWrites.second;
@@ -1001,6 +1019,25 @@ static bool hasGemvCorePatternImpl(
   return true;
 }
 
+// collect access name for the constant access in "umap"
+// We assume only one constant access in "umap" and 
+// we expect to find it.
+isl::map collectConstant(isl::union_map umap) {
+
+  auto unionMapAsMaps = vectorMapsFromUnionMap(umap);
+  for (const auto& m : unionMapAsMaps) 
+    if (m.dim(isl::dim::out) == 0)
+      return m;
+  assert(0 && "cannot find any constant");
+  return unionMapAsMaps[0];
+}
+
+std::string collectConstantName(isl::union_map umap) {
+
+  auto tmp = collectConstant(umap);
+  return getName(tmp);
+}
+
 // check access pattern for core statement in GEMM
 // We expect C(i,j) = C(i,j) + A(i,k) * B(k,j) _OR_
 //  C(i,j) = C(i,j) + A(i,k) * B(j,k)
@@ -1013,7 +1050,10 @@ static bool hasGemmCorePatternImpl(
   auto reads = readsAndWrites.first;
   auto writes = readsAndWrites.second;
 
-  if ((reads.n_map() != 3) && (writes.n_map() != 1))
+  if (reads.n_map() > 4) 
+    return false;
+
+  if (writes.n_map() != 1)
     return false;
 
   // TODO: check access dimensionality.
@@ -1059,7 +1099,7 @@ static bool hasGemmCorePatternImpl(
       reads,
       readMatches[0][_i].payload().inputDimPos_,
       readMatches[0][_j].payload().inputDimPos_);
-
+  
   if (_C_write != _C_read)
     return false;
 
@@ -1092,6 +1132,14 @@ static bool hasGemmCorePatternImpl(
   } else {
     assert(0);
   }
+    
+  if (reads.n_map() == 4) {
+    if (!_oneOf(reads, isConstant()))
+      return false;
+    else
+      mmi.alpha = collectConstantName(reads);
+  }
+
   mmi.readFromC = _C_read;
   mmi.readFromA = getArrayNameFromMap(
       reads,
@@ -1127,7 +1175,8 @@ static bool hasGemmCorePatternImpl(
 //      C[i][j] = 0.000000f
 //      for (int k = 0; k <= K; k++)
 //        C[i][j] = C[i][j] +  A[i][k] * B[k][j] _OR_
-//        C[i][j] = C[i][j] +  A[i][k] * B[j][k]
+//        C[i][j] = C[i][j] +  A[i][k] * B[j][k] _OR_
+//        C[i][j] = C[i][j] + alpha * A[i][k] * B[k][j]
 //     }
 //   }
 

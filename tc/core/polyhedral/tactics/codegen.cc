@@ -474,7 +474,8 @@ void AstPrinter::emitMatmulMark(isl::ast_node_mark mark) {
   WS ws;
 
   context_.ss << ws.tab() << "cim_gemm(" << payload->writeToC << ","
-              << payload->readFromA << "," << payload->readFromB << ");"
+              << payload->readFromA << "," << payload->readFromB << "," 
+              << payload->alpha << ");"
               << std::endl;
 
   delete payload;
