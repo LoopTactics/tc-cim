@@ -127,6 +127,7 @@ struct AstPrinter {
   void emitMark(isl::ast_node_mark mark);
   void emitMatmulMark(isl::ast_node_mark mark);
   void emitGemvMark(isl::ast_node_mark mark);
+  void emitBatchedMatmulMark(isl::ast_node_mark mark);
 
  private:
   const CodegenContext& context_;
@@ -495,15 +496,35 @@ void AstPrinter::emitGemvMark(isl::ast_node_mark mark) {
   delete payload;
 }
 
+void AstPrinter::emitBatchedMatmulMark(isl::ast_node_mark mark) {
+  isl::id markId = mark.get_id();
+  void* user = isl_id_get_user(markId.get());
+  BatchedMatMulInfo* payload = static_cast<BatchedMatMulInfo*>(user);
+
+  WS ws;
+
+  context_.ss << ws.tab() << "cim_batched_gemm(" << payload->writeToC << ","
+              << payload->readFromA << "," << payload->readFromB << "," 
+              << payload->alpha << ");"
+              << std::endl;
+
+  delete payload; 
+}
+
 void AstPrinter::emitMark(isl::ast_node_mark mark) {
   isl::id markId = mark.get_id();
   const std::string markType = markId.get_name();
 
   if (markType == "__tactics_gemm") {
     emitMatmulMark(mark);
-  } else if (markType == "__tactics_mvt") {
+  } 
+  else if (markType == "__tactics_mvt") {
     emitGemvMark(mark);
-  } else {
+  }
+  else if (markType == "__tactics_batched_gemm") {
+    emitBatchedMatmulMark(mark);
+  } 
+  else {
     LOG(FATAL) << "Unsupported mark type: " << markType;
   }
 }
