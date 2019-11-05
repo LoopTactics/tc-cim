@@ -86,6 +86,33 @@ class GemvInfo {
   // what about the type FLOAT or DOUBLE?
 };
 
+class BatchedMatMulInfo { 
+  public:
+    BatchedMatMulInfo() = default;
+    BatchedMatMulInfo(const BatchedMatMulInfo& mm) = default;
+
+  public:
+    std::string readFromA = "nullptr";
+    std::string readFromB = "nullptr";  
+    std::string readFromC = "nullptr";
+    std::string writeToC = "nullptr";
+
+    std::string beta = "1";
+    std::string alpha = "1";
+
+    int m = -1;
+    int n = -1;
+    int l = -1; 
+    int batch = -1;
+
+    int i = -1;
+    int j = -1;
+    int k = -1;
+    
+    bool isAtranspose = false;
+    bool isBtranspose = false;
+};
+
 class BlasInfo {
  public:
   BlasInfo() = default;
@@ -93,6 +120,7 @@ class BlasInfo {
  public:
   MatMulInfo mmi;
   GemvInfo mvi;
+  BatchedMatMulInfo bmmi;
 };
 
 // Scop associated with fixed block and grid dimensions.
