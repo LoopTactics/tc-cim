@@ -3254,6 +3254,7 @@ public:
   inline union_set wrap() const;
   inline union_map zip() const;
   inline bool is_identity() const;
+  inline union_map project_out(isl::dim type, unsigned int f, unsigned int s) const;
   typedef isl_union_map* isl_ptr_t;
 };
 
@@ -18337,12 +18338,17 @@ union_map union_flow::get_must_no_source() const
 
 // implementations for isl::union_map
 
+union_map union_map::project_out(isl::dim type, unsigned int first, unsigned int n) const
+{
+  auto res = isl_union_map_project_out(copy(), static_cast<enum isl_dim_type>(type), first, n);
+  return manage(res);
+}
+
 union_map::union_map(union_pw_multi_aff upma)
 {
   auto res = isl_union_map_from_union_pw_multi_aff(upma.release());
   ptr = res;
 }
-
 
 union_map manage(__isl_take isl_union_map *ptr) {
   if (!ptr)
