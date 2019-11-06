@@ -1841,6 +1841,8 @@ public:
   inline map flat_range_product(map map2) const;
   inline unsigned int dim(isl::dim type) const;
   inline map project_out(isl::dim type, unsigned int f, unsigned int s) const;
+  inline map equate(isl::dim type1, int pos1, isl::dim type2, int pos2) const;
+  inline map order_lt(isl::dim type1, int pos1, isl::dim type2, int pos2) const;
   typedef isl_map* isl_ptr_t;
 };
 
@@ -8965,6 +8967,18 @@ local_space local_space::wrap() const
 }
 
 // implementations for isl::map
+
+map map::order_lt(isl::dim type1, int pos1, isl::dim type2, int pos2) const
+{
+  auto res = isl_map_order_lt(copy(), static_cast<enum isl_dim_type>(type1), pos1, static_cast<enum isl_dim_type>(type2), pos2);
+  return manage(res);
+}
+
+map map::equate(isl::dim type1, int pos1, isl::dim type2, int pos2) const
+{
+  auto res = isl_map_equate(copy(), static_cast<enum isl_dim_type>(type1), pos1, static_cast<enum isl_dim_type>(type2), pos2);
+  return manage(res);
+}
 
 map map::set_tuple_id(isl::dim type, id id) const
 {
