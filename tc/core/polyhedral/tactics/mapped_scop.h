@@ -21,6 +21,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <limits>
 
 #include "tc/core/polyhedral/scop.h"
 #include "tc/core/tactics/tactics_mapping_options.h"
@@ -35,23 +36,81 @@ class ScheduleTree;
 
 namespace tactics {
 
+// TODO: use _
+class DimInfo {
+  public:
+    DimInfo() = default;
+    DimInfo(const DimInfo& d) = default;
+    DimInfo(int l, int u) : lb(l), ub(u) {};
+
+  public:
+    int lb = std::numeric_limits<int>::min();
+    int ub = std::numeric_limits<int>::min();
+
+  bool operator!=(const DimInfo& d) const {
+    if (this->lb != d.lb)
+      return true;
+    if (this->ub != d.ub)
+      return true;
+    return false;
+  }
+
+  bool operator==(const DimInfo& d) const {
+    if (this->lb != d.lb)
+      return false;
+    if (this->ub != d.ub)
+      return false;
+    return true;
+  }
+};
+    
+class ArrayInfo {
+  public:
+    ArrayInfo() = default;  
+    ArrayInfo(std::string s, std::vector<DimInfo> d) : name(s), dims(d) {};
+    ArrayInfo(const ArrayInfo& a) = default;
+
+  public:
+    std::string name = "nullptr";
+    std::vector<DimInfo> dims;
+
+  bool operator!=(const ArrayInfo& a) const {
+    if (this->name != a.name)
+      return true;
+    if (this->dims.size() != a.dims.size())
+      return true;
+    bool t = std::equal(this->dims.begin(), this->dims.begin() + this->dims.size(), a.dims.begin());
+    if (!t)
+      return true;
+    return false;
+  }
+
+  bool operator==(const ArrayInfo& a) const {
+    if (this->name != a.name)
+      return false;
+    if (this->dims.size() != a.dims.size())
+      return false;
+    bool t = std::equal(this->dims.begin(), this->dims.begin() + this->dims.size(), a.dims.begin());
+    if (!t)
+      return false;
+    return true;
+  }
+};
+
 class MatMulInfo {
  public:
   MatMulInfo() = default;
   MatMulInfo(const MatMulInfo& m) = default;
 
  public:
-  std::string readFromA = "nullptr";
-  std::string readFromB = "nullptr";
-  std::string readFromC = "nullptr";
-  std::string writeToC = "nullptr";
+  ArrayInfo readFromA{};
+  ArrayInfo readFromB{};
+  ArrayInfo readFromC{};
+  ArrayInfo writeToC{};
+  ArrayInfo writeToCInit{};
 
   std::string beta = "1";
   std::string alpha = "1";
-
-  int m = -1;
-  int n = -1;
-  int l = -1;
 
   int i = -1;
   int j = -1;
@@ -67,23 +126,22 @@ class GemvInfo {
   GemvInfo(const GemvInfo& g) = default;
 
  public:
-  std::string readFromA = "nullptr";
-  std::string readFromX = "nullptr";
-  std::string readFromY = "nullptr";
-  std::string writeToY = "nullptr";
+  ArrayInfo readFromA{};
+  ArrayInfo readFromX{};
+  ArrayInfo readFromY{};
+  ArrayInfo writeToY{};
+  ArrayInfo writeToYInit{};
 
   std::string beta = "1";
   std::string alpha = "1";
 
-  int m = -1;
-  int n = -1;
+  int incx = -1;
+  int incy = -1;
 
   int i = -1;
   int j = -1;
 
   bool isAtranspose = false;
-
-  // what about the type FLOAT or DOUBLE?
 };
 
 class BatchedMatMulInfo { 
@@ -92,19 +150,16 @@ class BatchedMatMulInfo {
     BatchedMatMulInfo(const BatchedMatMulInfo& mm) = default;
 
   public:
-    std::string readFromA = "nullptr";
-    std::string readFromB = "nullptr";  
-    std::string readFromC = "nullptr";
-    std::string writeToC = "nullptr";
+    ArrayInfo readFromA{};
+    ArrayInfo readFromB{};  
+    ArrayInfo readFromC{};
+    ArrayInfo writeToC{};
+    ArrayInfo writeToCInit{};
 
     std::string beta = "1";
     std::string alpha = "1";
-
-    int m = -1;
-    int n = -1;
-    int l = -1; 
+ 
     int batch = -1;
-
     int i = -1;
     int j = -1;
     int k = -1;
