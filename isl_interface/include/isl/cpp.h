@@ -14753,13 +14753,13 @@ schedule_node::schedule_node()
 schedule_node::schedule_node(const schedule_node &obj)
     : ptr(nullptr)
 {
-  if (!obj.ptr)
-    exception::throw_invalid("NULL input", __FILE__, __LINE__);
-  auto ctx = isl_schedule_node_get_ctx(obj.ptr);
-  options_scoped_set_on_error saved_on_error(ctx, exception::on_error);
+  //if (!obj.ptr)
+  //  exception::throw_invalid("NULL input", __FILE__, __LINE__);
+  //auto ctx = isl_schedule_node_get_ctx(obj.ptr);
+  //options_scoped_set_on_error saved_on_error(ctx, exception::on_error);
   ptr = obj.copy();
-  if (obj.ptr && !ptr)
-    exception::throw_last_error(ctx);
+  //if (obj.ptr && !ptr)
+  //  exception::throw_last_error(ctx);
 }
 
 schedule_node::schedule_node(__isl_take isl_schedule_node *ptr)
