@@ -144,6 +144,10 @@ std::string emitTacticsKernel(
     const std::string& specializedName,
     const MappedScop& scop);
 
+std::string emitTacticsMain(
+    const std::string& specializedName,
+    const MappedScop& scop);
+
 std::string emitTacticsEntryPoint(
     const std::string& specializedName,
     const MappedScop& scop);

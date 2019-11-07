@@ -62,6 +62,9 @@ DECLARE_bool(tuner_gen_log_generations);
 DECLARE_uint64(tuner_min_launch_total_threads);
 DECLARE_uint32(tuner_save_best_candidates_count);
 
+// Loop Tactics Flags
+DECLARE_bool(generate_tactics_main);
+
 // Misc
 DECLARE_int64(random_seed);
 DECLARE_bool(schedule_tree_verbose_validation);
