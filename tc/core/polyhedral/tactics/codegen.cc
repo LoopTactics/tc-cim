@@ -132,6 +132,7 @@ struct AstPrinter {
   void emitMatmulMark(isl::ast_node_mark mark);
   void emitGemvMark(isl::ast_node_mark mark);
   void emitBatchedMatmulMark(isl::ast_node_mark mark);
+  void emitNothing(isl::ast_node_mark mark);
 
  private:
   const CodegenContext& context_;
@@ -474,6 +475,9 @@ void AstPrinter::emitStmt(isl::ast_node_user node) {
   }
 }
 
+void AstPrinter::emitNothing(isl::ast_node_mark mark) {
+}
+
 // create GEMM blas call.
 // cimblas_gemm(
 //  m : specifies the number of rows for A and C
@@ -582,6 +586,13 @@ void AstPrinter::emitMark(isl::ast_node_mark mark) {
   }
   else if (markType == "__tactics_batched_gemm") {
     emitBatchedMatmulMark(mark);
+  }
+  else if (markType == "__tactics_gemm_do_not_codegen") {
+    emitNothing(mark);
+  }
+  else if (markType == "__print_hello") {
+    assert(0 && "print detected");
+    emitNothing(mark);
   } 
   else {
     LOG(FATAL) << "Unsupported mark type: " << markType;

@@ -3049,6 +3049,7 @@ public:
   inline id get_tuple_id(isl::dim type) const;
   inline std::string get_tuple_name(isl::dim type) const;
   inline space add_dims(isl::dim type, unsigned int n) const;
+  inline space set_tuple_name(isl::dim type, const std::string& s) const;
   typedef isl_space* isl_ptr_t;
 };
 
@@ -17372,6 +17373,12 @@ int set_list::size() const
 }
 
 // implementations for isl::space
+
+space space::set_tuple_name(isl::dim type, const std::string &s) const
+{
+  auto res = isl_space_set_tuple_name(copy(), static_cast<enum isl_dim_type>(type), s.c_str());
+  return manage(res);
+}
 
 unsigned int space::dim(isl::dim type) const
 {
