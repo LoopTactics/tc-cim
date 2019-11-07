@@ -100,6 +100,10 @@ std::string makePointerName(std::string n) {
   return string("p") + n;
 }
 
+std::string makeName(std::string n) {
+  return n;
+}
+
 std::string makeReductionTmpName(isl::id updateId, const Scop& scop) {
   int pos = scop.reductionUpdatePos(updateId);
   return "acc_" + std::to_string(pos);
@@ -156,31 +160,34 @@ vector<pair<string, string>> emitParams(const Scop& scop) {
 // Returns a pair (tensor name, tensor type)
 pair<string, string> emitTypedTensorName(
     Halide::OutputImageParam t,
-    bool constInput = false) {
+    bool constInput = false,
+    std::string (name_fun)(std::string) = makePointerName) {
   stringstream sstype;
   sstype << (constInput ? "const " : "") << halideTypeString(t.type()) << "*";
 
-  string sname = makePointerName(t.name());
+  string sname = name_fun(t.name());
 
   return make_pair(sname, sstype.str());
 }
 
 vector<pair<string, string>> emitTypedTensorNames(
-    const vector<Halide::OutputImageParam>& tensors) {
+    const vector<Halide::OutputImageParam>& tensors,
+    std::string (name_fun)(std::string) = makePointerName) {
   vector<pair<string, string>> res;
   res.reserve(tensors.size());
   for (auto t : tensors) {
-    res.push_back(emitTypedTensorName(t));
+    res.push_back(emitTypedTensorName(t, false, name_fun));
   }
   return res;
 }
 
 vector<pair<string, string>> emitTypedTensorNames(
-    const vector<Halide::ImageParam>& tensors) {
+    const vector<Halide::ImageParam>& tensors,
+    std::string (name_fun)(std::string) = makePointerName) {
   vector<pair<string, string>> res;
   res.reserve(tensors.size());
   for (auto t : tensors) {
-    res.push_back(emitTypedTensorName(t, true));
+    res.push_back(emitTypedTensorName(t, true, name_fun));
   }
   return res;
 }
@@ -853,6 +860,196 @@ string emitTacticsKernel(
 
   AstPrinter(CodegenContext(ss, mscop, nodeInfoMap)).emit(astNode);
   ss << "}" << endl;
+
+  return ss.str();
+}
+
+string emitTacticsMain(const std::string& specializedName,
+		       const MappedScop& mscop)
+{
+  const Scop& scop = mscop.scop();
+  stringstream ss;
+  WS ws;
+
+  // Make a map of the specialized scalar parameter values
+  map<string, Halide::Expr> paramValues;
+  
+  for (const auto& kvp : scop.parameterValues)
+    paramValues[kvp.first] = kvp.second;
+
+  ss << "int main(int argc, char** argv) {" << std::endl;
+
+  // Parameters
+  auto paramsVec = emitParams(scop);
+
+  for(auto& param: paramsVec) {
+    ss << ws.tab()
+       << "static const "
+       << param.second
+       << " "
+       << param.first
+       << " = "
+       << paramValues[param.first]
+       << ";"
+       << std::endl;
+  }
+
+  ss << std::endl;
+  
+  // Declarations
+  auto emitDecl = [&](const Halide::OutputImageParam& p) {
+		    ss << ws.tab()
+		       << "static "
+		       << halideTypeString(p.type())
+		       << " "
+		       << p.name();
+
+		    for (int i = 0; i < p.dimensions(); ++i) {
+		      Halide::Expr extent = p.parameter().extent_constraint(i);
+		      extent = Halide::Internal::substitute(paramValues, extent);
+		      ss << "[" << extent << "]";
+		    }
+
+		    ss << ";" << std::endl;
+		  };		     
+  
+  for (auto& o : scop.halide.outputs)
+    emitDecl(o);
+
+  ss << std::endl;
+  
+  for (auto& i : scop.halide.inputs)
+    emitDecl(i);
+
+  ss << std::endl;
+
+  // Initializations
+  auto emitInit = [&](const Halide::ImageParam& p) {
+		    stringstream ssHead;
+		    stringstream ssStmt;
+		    stringstream tabs;
+		    stringstream ssRandExpr;
+
+		    ssStmt << p.name();
+
+		    for (int i = 0; i < p.dimensions(); ++i) {
+		      std::string iterName = "i" + std::to_string(i);
+		      tabs << ws.tab();
+			
+		      Halide::Expr extent = p.parameter().extent_constraint(i);
+
+		      ssHead << tabs.str()
+			     << "for(size_t "
+			     << iterName
+			     << " = 0; "
+			     << iterName
+			     << " < "
+			     << extent
+			     << "; "
+			     << iterName
+			     << "++)"
+			     << std::endl;
+
+		      ssStmt << "[" << iterName << "]";
+		      ssRandExpr << iterName;
+
+		      if(i != p.dimensions()-1)
+			ssRandExpr << "+";
+		    }
+
+		    ssStmt << " = " << ssRandExpr.str() << ";" << std::endl;
+
+		    tabs << ws.tab();
+
+		    ss << ssHead.str()
+		       << tabs.str()
+		       << ssStmt.str();
+		  };
+
+  for (auto& i : scop.halide.inputs) {
+    emitInit(i);
+    ss << std::endl;
+  }
+
+  ss << std::endl;
+
+  ss << "  " << specializedName << "(";
+
+  auto sigVec = paramsVec +
+    emitTypedTensorNames(scop.halide.outputs, makeName) +
+    emitTypedTensorNames(scop.halide.inputs, makeName);
+ 
+  for (auto& s : sigVec) {
+    string& sname = s.first;
+
+    ss << sname;
+
+    if (s != sigVec.back()) {
+      ss << ", ";
+    }
+  }
+
+  ss << ");" << std::endl;
+
+  // Use the results
+  ss << std::endl
+     << ws.tab()
+     << "float v = 0;"
+     << std::endl;
+
+  auto emitUse = [&](const Halide::OutputImageParam& p) {
+		   stringstream ssHead;
+		   stringstream ssStmt;
+		   stringstream tabs;
+
+		   ssStmt << "v += " << p.name();
+
+		   for (int i = 0; i < p.dimensions(); ++i) {
+		     std::string iterName = "i" + std::to_string(i);
+		     tabs << ws.tab();
+			
+		     Halide::Expr extent = p.parameter().extent_constraint(i);
+
+		     ssHead << tabs.str()
+			    << "for(size_t "
+			    << iterName
+			    << " = 0; "
+			    << iterName
+			    << " < "
+			    << extent
+			    << "; "
+			    << iterName
+			    << "++)"
+			    << std::endl;
+
+		     ssStmt << "[" << iterName << "]";
+		   }
+
+		   ssStmt << ";" << std::endl;
+
+		   tabs << ws.tab();
+
+		   ss << ssHead.str()
+		      << tabs.str()
+		      << ssStmt.str();
+		 };
+
+  for (auto& o : scop.halide.outputs) {
+    emitUse(o);
+    ss << std::endl;
+  }
+
+  ss << ws.tab()
+     << "printf(\"Sum of all output elements: %f\\n\", v);"
+     << std::endl;
+
+
+  ss << std::endl
+     << ws.tab()
+     << "return 0;"
+     << std::endl;
+
+  ss << "}" << std::endl;
 
   return ss.str();
 }
