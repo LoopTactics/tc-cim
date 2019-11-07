@@ -467,6 +467,19 @@ void AstPrinter::emitStmt(isl::ast_node_user node) {
   }
 }
 
+// create GEMM blas call.
+// cimblas_gemm(
+//  m : specifies the number of rows for A and C
+//  n : specifies the number of cols for B and C
+//  k : specifies the number of cols for A and the number of rows for B
+//  alpha : scalar alpha
+//  A : 2-d tensor
+//  lda : max(1, k) if no trans or max(1, m)
+//  B : 2-d tensor
+//  ldb : max(1, n) if no trans or max(1, k)
+//  beta : scalar beta
+//  C : 2-d tensor
+//  ldc : max(1,m));
 void AstPrinter::emitMatmulMark(isl::ast_node_mark mark) {
   isl::id markId = mark.get_id();
   void* user = isl_id_get_user(markId.get());
@@ -474,14 +487,42 @@ void AstPrinter::emitMatmulMark(isl::ast_node_mark mark) {
 
   WS ws;
 
-  context_.ss << ws.tab() << "cim_gemm(" << payload->writeToC << ","
-              << payload->readFromA << "," << payload->readFromB << "," 
-              << payload->alpha << ");"
-              << std::endl;
+  int m = 
+    payload->readFromA.dims[0].ub - payload->readFromA.dims[0].lb;
+  int n =
+    payload->readFromB.dims[1].ub - payload->readFromB.dims[1].lb;
+  int k =
+    payload->readFromA.dims[1].ub - payload->readFromA.dims[1].lb;
+  int lda = (payload->isAtranspose) ? std::max(1, m) : std::max(1, k);
+  int ldb = (payload->isBtranspose) ? std::max(1, k) : std::max(1, n);
+  int ldc = std::max(1, m);
+
+  context_.ss << ws.tab() << "cimblas_gemm(" 
+              << m << ", " << n << ", " << k << ", "
+              << payload->alpha << ", "
+              << payload->readFromA.name << ", "
+              << lda << ", "
+              << payload->readFromB.name << ", " 
+              << ldb << ", "
+              << payload->beta << ", " 
+              << payload->writeToC.name << ", "  
+              << ldc << ");" << std::endl;
 
   delete payload;
 }
 
+// create GEMV blas call.
+// cimblas_gemv(
+//   m : specifies the number of rows for A
+//   n : specifies the number of cols for A
+//   alpha : sclara alpha
+//   A : 2-d tensor
+//   lda : max(1, n)
+//   X : 1-d tensor
+//   incx : increment for X
+//   beta : scalar beta
+//   Y : 1-d tensor
+//   incy : increment for y)
 void AstPrinter::emitGemvMark(isl::ast_node_mark mark) {
   isl::id markId = mark.get_id();
   void* user = isl_id_get_user(markId.get());
@@ -489,9 +530,20 @@ void AstPrinter::emitGemvMark(isl::ast_node_mark mark) {
 
   WS ws;
 
-  context_.ss << ws.tab() << "cim_gemv(" << payload->writeToY << ","
-              << payload->readFromX << "," << payload->readFromA << ");"
-              << std::endl;
+  int m = payload->readFromA.dims[0].ub - payload->readFromA.dims[0].lb;
+  int n = payload->readFromA.dims[1].ub - payload->readFromA.dims[0].lb;
+  int lda = std::max(1, n);
+
+  context_.ss << ws.tab() << "cim_gemv(" 
+              << m << ", " << n << ", "
+              << payload->alpha << ", "
+              << payload->readFromA.name << ", "
+              << lda << ", "
+              << payload->readFromX.name << ", "
+              << payload->incx << ", "
+              << payload->beta << ", "
+              << payload->writeToY.name << ", "
+              << payload->incy << ");" << std::endl;
 
   delete payload;
 }
@@ -503,8 +555,8 @@ void AstPrinter::emitBatchedMatmulMark(isl::ast_node_mark mark) {
 
   WS ws;
 
-  context_.ss << ws.tab() << "cim_batched_gemm(" << payload->writeToC << ","
-              << payload->readFromA << "," << payload->readFromB << "," 
+  context_.ss << ws.tab() << "cim_batched_gemm(" << payload->writeToC.name << ","
+              << payload->readFromA.name << "," << payload->readFromB.name << "," 
               << payload->alpha << ");"
               << std::endl;
 
