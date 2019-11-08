@@ -65,6 +65,9 @@ DECLARE_uint32(tuner_save_best_candidates_count);
 // Loop Tactics Flags
 DECLARE_bool(generate_tactics_main);
 
+// Disable Loop Tactics
+DECLARE_bool(disable_tactics);
+
 // Misc
 DECLARE_int64(random_seed);
 DECLARE_bool(schedule_tree_verbose_validation);

@@ -1849,11 +1849,14 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
                       filter(getfilterCore)))));
   }
                 
-  //root = wrapOnMatch(root, matcher, labelNode, bi).root();
-  root = rebuildOnMatch(root, matcher, builder).root();
-  root = distributeLoops(root).root();
-  //root = tileLoops(root);
-  std::cout << root.to_str() << "\n";
+  if(!FLAGS_disable_tactics) {
+    //root = wrapOnMatch(root, matcher, labelNode, bi).root();
+    root = rebuildOnMatch(root, matcher, builder).root();
+    root = distributeLoops(root).root();
+    //root = tileLoops(root);
+    std::cout << root.to_str() << "\n";
+  }
+
   return root.get_schedule();
 }
 

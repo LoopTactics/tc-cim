@@ -134,6 +134,10 @@ DEFINE_bool(generate_tactics_main,
 	    false,
 	    "Generate main function with test case for Loop Tactics.");
 
+DEFINE_bool(disable_tactics,
+	    false,
+	    "Disables all optimizations by Loop Tactics.");
+
 uint64_t initRandomSeed() {
   static std::mutex mut;
   static bool inited = false;
