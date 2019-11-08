@@ -1705,14 +1705,11 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
     return res;
   };
 
-  bool isDominated = false;
   auto isNotDominated = [&](isl::schedule_node leaf) {
     leaf = leaf.parent().previous_sibling().parent().parent();
     bool res = isNotDominatedImpl(scop, leaf);
-    if (!res) {
-      labelNode = labelNode + "_is_dominated";
-      isDominated = true;
-    } 
+    if (!res) 
+      labelNode = labelNode + "_is_dominated"; 
     return true;
   };
 
@@ -1731,9 +1728,7 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
   }();
 
   root = wrapOnMatch(root, matcher, labelNode, bi).root();
-  // if at least one matcher is dominated run "distributeLoops"
-  if (isDominated)
-    root = distributeLoops(root);
+  root = distributeLoops(root);
   return root.get_schedule();
 }
 
