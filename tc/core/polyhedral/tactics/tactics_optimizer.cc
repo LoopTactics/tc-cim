@@ -555,6 +555,25 @@ isl::schedule optimizeGemmSchedule(
 */
 
 enum class GemmType {isNT, isNN};
+constexpr int TILE_FACTOR_CIM_DEVICE = 512;
+
+// utility function.
+//
+// @param node: Current node where to start cutting.
+// @param replacement: Subtree to be attached after @p node.
+// @return: Root node of the rebuild subtree.
+//
+// NOTE: This is not always possible. Cutting children
+// in set or sequence is not allowed by ISL and as a consequence
+// by Loop Tactics.
+static isl::schedule_node
+rebuild(isl::schedule_node node,
+        const builders::ScheduleNodeBuilder &replacement) {
+
+  node = node.cut();
+  node = replacement.insertAt(node);
+  return node;
+}
 
 // check schedule dimensionality
 static bool scheduleDimensionality(isl::union_map schedule, 
@@ -631,6 +650,29 @@ isl::schedule_node wrapOnMatch(
   for (int i = 0; i < node.n_children(); i++) {
     node = wrapOnMatch(node.child(i), pattern, marker, p).parent();
   }
+  return node;
+}
+
+isl::schedule_node rebuildIfMatches(isl::schedule_node node,
+    const matchers::ScheduleNodeMatcher& pattern,
+    const builders::ScheduleNodeBuilder& replacement) {
+  if (matchers::ScheduleNodeMatcher::isMatching(pattern, node))
+    node = rebuild(node, replacement);
+  return node;
+}
+
+isl::schedule_node rebuildOnMatch(
+    isl::schedule_node node,
+    const matchers::ScheduleNodeMatcher& pattern, 
+    const builders::ScheduleNodeBuilder& replacement) {
+  node = rebuildIfMatches(node, pattern, replacement);
+  
+  if (node.isa<isl::schedule_node_mark>())
+    return node;
+  
+  for (int i = 0; i < node.n_children(); i++)
+    node = rebuildOnMatch(node.child(i), pattern, replacement).parent();
+
   return node;
 }
 
@@ -1452,24 +1494,6 @@ static bool hasBatchedGemmCorePatternImpl(const MappedScop& scop,
 
 // utility function.
 //
-// @param node: Current node where to start cutting.
-// @param replacement: Subtree to be attached after @p node.
-// @return: Root node of the rebuild subtree.
-//
-// NOTE: This is not always possible. Cutting children
-// in set or sequence is not allowed by ISL and as a consequence
-// by Loop Tactics.
-static isl::schedule_node
-rebuild(isl::schedule_node node,
-        const builders::ScheduleNodeBuilder &replacement) {
-
-  node = node.cut();
-  node = replacement.insertAt(node);
-  return node;
-}
-
-// utility function.
-//
 // @param node: Root of the subtree to inspect.
 // @param pattern: Pattern to look-up in the subtree.
 // @param replacement: Replacement to be applied in case
@@ -1570,7 +1594,7 @@ __isl_give isl_schedule_node *distributeLoopsImpl(__isl_take isl_schedule_node* 
 
     if (id.find(substring) != std::string::npos) {
       isl::id markNodeId = nodeCpp.mark_get_id();
-      nodeCpp = nodeCpp.parent();
+      nodeCpp = nodeCpp.parent().parent();
       assert(nodeCpp.isa<isl::schedule_node_filter>());
       isl::union_set domPattern = nodeCpp.filter_get_filter();
       nodeCpp = nodeCpp.parent().parent();
@@ -1630,6 +1654,70 @@ static bool isNotDominatedImpl(const MappedScop& scop,
   }
   return true;
 }
+
+// is the current band too big for the CIM device?
+// We have three options:
+// 1. each dimension is smaller then TILE_FACTOR_CIM_DEVICE
+// 2. 
+//static bool needToTileImpl(const MappedScop& scop,
+//    isl::schedule_node band) {
+  //isl::union_set dom = scop.scop().domain(); 
+  //isl::union_map prefixSchedule = band.get_prefix_schedule_union_map();
+  //prefixSchedule = prefixSchedule.intersect_domain(dom);
+  //auto vectorMaps = vectorMapsFromUnionMap(prefixSchedule);
+//  return true;
+//}
+
+// tmp attempt to tiling
+//static isl::schedule_node tileLoops(isl::schedule_node root) {
+//  isl::schedule_node node = root.child(0).child(0);
+//  isl::schedule_node_band band = node.as<isl::schedule_node_band>();  
+//
+//  isl::space space = band.get_space();
+//  auto dims = space.dim(isl::dim::set);
+//  auto sizes = isl::multi_val::zero(space);
+//  
+//  for (unsigned i = 0; i < dims; i++) 
+//    sizes = sizes.set_val(i, isl::val(band.get_ctx(), 512));
+//  
+//  band = band.tile(sizes);
+//
+//  return band.root();
+//}
+
+static std::pair<isl::multi_union_pw_aff, isl::multi_union_pw_aff> tileNode(
+    isl::schedule_node node) {
+  isl::schedule_node_band band = node.as<isl::schedule_node_band>();
+  
+  isl::space space = band.get_space();
+  auto dims = space.dim(isl::dim::set);
+  auto sizes = isl::multi_val::zero(space);
+  
+  for (unsigned i = 0; i < dims; i++)
+    sizes = sizes.set_val(i, isl::val(band.get_ctx(), TILE_FACTOR_CIM_DEVICE));
+  band = band.tile(sizes);
+  auto tileSchedule = band.get_partial_schedule();
+  auto pointSchedule = band.child(0).band_get_partial_schedule();
+  return std::make_pair(tileSchedule, pointSchedule);
+} 
+  
+
+static isl::id getMarker(isl::ctx ctx, const std::string &label, const BlasInfo &bi) {
+  if (label == "__tactics_mvt")
+    return isl::id::alloc(ctx, label, new GemvInfo{bi.mvi});
+  else if (label == "__tactics_gemm")
+    return isl::id::alloc(ctx, label, new MatMulInfo{bi.mmi});
+  else if (label == "__tactics_batched_gemm")
+    return isl::id::alloc(ctx, label, new BatchedMatMulInfo{bi.bmmi});
+  else if (label == "__tactics_gemm_is_dominated")
+    return isl::id::alloc(ctx, label, new MatMulInfo{bi.mmi});
+  else {
+      std::cout << label << std::endl; 
+      assert(0 && "case not defined");
+  }
+  return isl::id::alloc(ctx, "__tactics_undefined", nullptr);
+}
+
   
 // entry point for GEMV/GEMM/batched GEMM detection.
 
@@ -1714,23 +1802,58 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
     return true;
   };
 
+  isl::schedule_node scheduleBody, filterInit, filterCore;
   auto matcher = [&]() {
     using namespace matchers;
     // clang-format off
     return
-    band(isNotDominated, 
+    band(isNotDominated, scheduleBody, 
       sequence(
-        filter(leaf()),
-        filter(leaf(_or(
+        filter(filterInit, leaf()),
+        filter(filterCore, leaf(_or(
                         _and(hasBatchedGemmInitPattern, hasBatchedGemmCorePattern),
                         _and(hasGemmInitPattern, hasGemmCorePattern),
                         _and(hasGemvInitPattern, hasGemvCorePattern))))));
     // clang-format on
   }();
 
-  root = wrapOnMatch(root, matcher, labelNode, bi).root();
+  auto builder = builders::ScheduleNodeBuilder();
+  {
+    using namespace builders;
+    auto tileScheduler = [&]() {
+      auto descr = BandDescriptor(scheduleBody);
+      auto tileSchedule = tileNode(scheduleBody).first;
+      descr.partialSchedule = tileSchedule;
+      return descr;
+    };
+    auto pointScheduler = [&]() {
+      auto descr = BandDescriptor(scheduleBody);
+      auto pointSchedule = tileNode(scheduleBody).second;
+      descr.partialSchedule = pointSchedule;
+      return descr;
+    };
+    auto marker = [&]() {
+      return getMarker(scheduleBody.get_ctx(), labelNode, bi);
+    };
+    auto getfilterInitialization = [&]() {
+      return filterInit.filter_get_filter();
+    };
+    auto getfilterCore = [&]() {
+      return filterCore.filter_get_filter();
+    };
+    builder = band(tileScheduler,
+                mark(marker,
+                  band(pointScheduler,
+                    sequence(
+                      filter(getfilterInitialization),
+                      filter(getfilterCore)))));
+  }
+                
+  //root = wrapOnMatch(root, matcher, labelNode, bi).root();
+  root = rebuildOnMatch(root, matcher, builder).root();
+  root = distributeLoops(root).root();
+  //root = tileLoops(root);
   std::cout << root.to_str() << "\n";
-  root = distributeLoops(root);
   return root.get_schedule();
 }
 
