@@ -1650,6 +1650,7 @@ public:
   
   static inline id alloc(ctx ctx, const std::string &name, void * user);
   inline std::string get_name() const;
+  inline void* get_user() const;
   typedef isl_id* isl_ptr_t;
 };
 
@@ -8418,12 +8419,17 @@ bool fixed_box::is_valid() const
 
 // implementations for isl::id
 
+void * id::get_user() const
+{
+  auto res = isl_id_get_user(get());
+  return res;
+}
+
 id id::alloc(ctx ctx, const std::string &name, void * user)
 {
   auto res = isl_id_alloc(ctx.release(), name.c_str(), user);
   return manage(res);
 }
-
 
 id manage(__isl_take isl_id *ptr) {
   if (!ptr)
