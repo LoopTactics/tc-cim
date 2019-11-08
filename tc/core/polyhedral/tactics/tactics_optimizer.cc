@@ -1677,7 +1677,7 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
   auto hasGemvCorePattern = [&](isl::schedule_node leaf) {
     bool res = hasGemvCorePatternImpl(scop, leaf, bi.mvi);
     if (res)
-      labelNode = "__tactics_mvt";
+      labelNode = "__tactics_mvt" + labelNode;
     return res;
   };
 
@@ -1689,7 +1689,7 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
   auto hasGemmCorePattern = [&](isl::schedule_node leaf) {
     bool res = hasGemmCorePatternImpl(scop, leaf, bi.mmi);
     if (res)
-      labelNode = "__tactics_gemm";
+      labelNode = "__tactics_gemm" + labelNode;
     return res;
   };
 
@@ -1701,15 +1701,16 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
   auto hasBatchedGemmCorePattern = [&](isl::schedule_node leaf) {
     bool res = hasBatchedGemmCorePatternImpl(scop, leaf, bi.bmmi);
     if (res)
-      labelNode = "__tactics_batched_gemm";
+      labelNode = "__tactics_batched_gemm" + labelNode;
     return res;
   };
 
-  auto isNotDominated = [&](isl::schedule_node leaf) {
-    leaf = leaf.parent().previous_sibling().parent().parent();
-    bool res = isNotDominatedImpl(scop, leaf);
+  auto isNotDominated = [&](isl::schedule_node band) {
+    bool res = isNotDominatedImpl(scop, band);
     if (!res) 
-      labelNode = labelNode + "_is_dominated"; 
+      labelNode = "_is_dominated";
+    else 
+      labelNode = ""; 
     return true;
   };
 
@@ -1717,17 +1718,18 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
     using namespace matchers;
     // clang-format off
     return
-    band( 
+    band(isNotDominated, 
       sequence(
         filter(leaf()),
         filter(leaf(_or(
-                        _and(hasBatchedGemmInitPattern, hasBatchedGemmCorePattern, isNotDominated),
-                        _and(hasGemmInitPattern, hasGemmCorePattern, isNotDominated),
-                        _and(hasGemvInitPattern, hasGemvCorePattern, isNotDominated))))));
+                        _and(hasBatchedGemmInitPattern, hasBatchedGemmCorePattern),
+                        _and(hasGemmInitPattern, hasGemmCorePattern),
+                        _and(hasGemvInitPattern, hasGemvCorePattern))))));
     // clang-format on
   }();
 
   root = wrapOnMatch(root, matcher, labelNode, bi).root();
+  std::cout << root.to_str() << "\n";
   root = distributeLoops(root);
   return root.get_schedule();
 }
