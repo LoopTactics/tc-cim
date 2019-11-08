@@ -601,11 +601,13 @@ isl::schedule_node wrapNodeIfMatches(
     else if (marker == "__tactics_batched_gemm")
       node = node.insert_mark(
         isl::id::alloc(node.get_ctx(), marker, new BatchedMatMulInfo{p.bmmi}));
-    else if (marker == "__tactics_gemm_do_not_codegen")
+    else if (marker == "__tactics_gemm_is_dominated")
       node = node.insert_mark(
         isl::id::alloc(node.get_ctx(), marker, new MatMulInfo{p.mmi}));
-    else 
+    else {
+      std::cout << marker << std::endl; 
       assert(0 && "case not defined");
+    }
   }
 
   return node;
@@ -1434,18 +1436,19 @@ static bool hasBatchedGemmCorePatternImpl(const MappedScop& scop,
   return true;
 }
 
-static isl::schedule_node printStatementsAndNodes(
-  const MappedScop& scop, isl::schedule_node node) {
-  if (node.isa<isl::schedule_node_leaf>()) {
-    std::cout << "NODE: " << node.to_str() << "\n";
-    std::cout << "STMT: " << getHalideStatement(scop.scop(), node);
-  }
-
-  for (int i = 0; i < node.n_children(); i++) {
-    node = printStatementsAndNodes(scop, node.child(i)).parent();
-  }
-  return node;
-}
+// debug function
+//static isl::schedule_node printStatementsAndNodes(
+//  const MappedScop& scop, isl::schedule_node node) {
+//  if (node.isa<isl::schedule_node_leaf>()) {
+//    std::cout << "NODE: " << node.to_str() << "\n";
+//    std::cout << "STMT: " << getHalideStatement(scop.scop(), node);
+//  }
+//
+//  for (int i = 0; i < node.n_children(); i++) {
+//    node = printStatementsAndNodes(scop, node.child(i)).parent();
+//  }
+//  return node;
+//}
 
 // utility function.
 //
@@ -1557,42 +1560,47 @@ std::vector<std::string> getStatementNames(std::vector<isl::map> maps) {
   return res;
 }
 
-//static bool hasTwoStatementOnlyImpl(const MappedScop& scop,
-//    isl::schedule_node band) {
-//  isl::union_map prefixSchedule = band.get_prefix_schedule_union_map();
-//  auto maps = vectorMapsFromUnionMap(prefixSchedule);
-//  auto stmtNames = getStatementNames(maps);
-//  if (stmtNames.size() != 2)
-//    return false;
-//  return true;
-//}
+__isl_give isl_schedule_node *distributeLoopsImpl(__isl_take isl_schedule_node* node,
+    void* user) {
+  isl::schedule_node nodeCpp = isl::manage(node);
+  if (nodeCpp.isa<isl::schedule_node_mark>()) {
+    std::string id = nodeCpp.mark_get_id().to_str();
+    id = id.substr(0, id.find("@"));
+    std::string substring = "_is_dominated";
 
-/// Add nodes for copying to the device before "node"
-static isl::schedule_node graftTree(isl::schedule_node node) {
-
-  isl::space space;
-  isl::union_set domain;
-  isl::schedule_node graft;
-
-  space = isl::space(node.get_ctx(), 0, 0);
-  space = space.set_tuple_name(isl::dim::set, "dummy_grafted");
-  domain = isl::union_set(isl::set::universe(space));
-  graft = isl::schedule_node::from_domain(domain);
-
-  node = node.graft_before(graft);
-
-  return node.parent().previous_sibling();
+    if (id.find(substring) != std::string::npos) {
+      isl::id markNodeId = nodeCpp.mark_get_id();
+      nodeCpp = nodeCpp.parent();
+      assert(nodeCpp.isa<isl::schedule_node_filter>());
+      isl::union_set domPattern = nodeCpp.filter_get_filter();
+      nodeCpp = nodeCpp.parent().parent();
+      assert(nodeCpp.isa<isl::schedule_node_band>());
+      nodeCpp = nodeCpp.order_before(domPattern);
+      nodeCpp = nodeCpp.parent().previous_sibling().child(0);
+      std::string::size_type i = id.find("_is_dominated");
+      id.erase(i, substring.length());
+      nodeCpp = nodeCpp.insert_mark(
+        isl::id::alloc(nodeCpp.get_ctx(), id, markNodeId.get_user()));
+      nodeCpp = nodeCpp.child(0).child(0);
+      nodeCpp = nodeCpp.del();
+    }
+ 
+  } 
+  return nodeCpp.release();
 }
 
-static isl::schedule_node moveMarks(isl::schedule_node root) {
-  root = root.child(0).child(0).child(0).child(0).child(0);
-  root = graftTree(root).child(0);
-  auto innerSched = isl::multi_union_pw_aff(root.get_ctx(), "[{dummy[i]->[(i)]}]");
-  root = root.insert_partial_schedule(innerSched);
-  root = root.insert_mark(isl::id::alloc(root.get_ctx(), "__print_hello", nullptr));
-  return root.root();
+// distribute loop in the band which dominates the matcher's band.
+// limitations:
+// 1. This function work only with the matcher provided.
+// 2. Moving the detected pattern before will not break any deps.
+static isl::schedule_node distributeLoops(isl::schedule_node node) {
+  node = isl::manage(isl_schedule_node_map_descendant_bottom_up(
+    node.release(), distributeLoopsImpl, nullptr));
+  return node.root();
 }
 
+// Is the matcher's band not dominated by an ancestor band
+// which contains a superset of the matcher's band?
 static bool isNotDominatedImpl(const MappedScop& scop,
     isl::schedule_node band) {
   if (!band.has_parent())
@@ -1623,7 +1631,7 @@ static bool isNotDominatedImpl(const MappedScop& scop,
   return true;
 }
   
-// entry point for GEMV/GEMM detection.
+// entry point for GEMV/GEMM/batched GEMM detection.
 
 // The shape of the calculation for the supported matrix-vector
 // multiplication includes an initialization of the output vector
@@ -1657,8 +1665,6 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
 
   // only canonicalization pass.
   root = squeezeTree(root);
-  // debug function.
-  //root = printStatementsAndNodes(scop, root);
 
   BlasInfo bi;
   std::string labelNode = "__tactics_undefined";
@@ -1699,11 +1705,14 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
     return res;
   };
 
+  bool isDominated = false;
   auto isNotDominated = [&](isl::schedule_node leaf) {
     leaf = leaf.parent().previous_sibling().parent().parent();
     bool res = isNotDominatedImpl(scop, leaf);
-    if (!res)
-      labelNode = "__tactics_gemm_do_not_codegen";
+    if (!res) {
+      labelNode = labelNode + "_is_dominated";
+      isDominated = true;
+    } 
     return true;
   };
 
@@ -1722,10 +1731,9 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
   }();
 
   root = wrapOnMatch(root, matcher, labelNode, bi).root();
-  //std::cout << root.to_str() << "\n"; 
-  root = moveMarks(root);
-  std::cout << root.to_str() << "\n";
-
+  // if at least one matcher is dominated run "distributeLoops"
+  if (isDominated)
+    root = distributeLoops(root);
   return root.get_schedule();
 }
 
