@@ -1629,31 +1629,49 @@ std::vector<std::string> getStatementNames(std::vector<isl::map> maps) {
   return res;
 }
 
+isl::schedule_node updateMark(isl::schedule_node nodeCpp, isl::id id, std::string idStr) {
+  
+  idStr = idStr.substr(0, idStr.find("@"));
+  std::string substring = "_is_dominated";
+  std::string::size_type i = idStr.find("_is_dominated");
+  idStr.erase(i, substring.length());
+
+  nodeCpp = nodeCpp.insert_mark(
+        isl::id::alloc(nodeCpp.get_ctx(), idStr, id.get_user()));
+
+  nodeCpp = nodeCpp.child(0).child(0);
+      nodeCpp = nodeCpp.del();
+  return nodeCpp;
+}
+
 __isl_give isl_schedule_node *distributeLoopsImpl(__isl_take isl_schedule_node* node,
     void* user) {
   isl::schedule_node nodeCpp = isl::manage(node);
   if (nodeCpp.isa<isl::schedule_node_mark>()) {
+
     std::string id = nodeCpp.mark_get_id().to_str();
     id = id.substr(0, id.find("@"));
     std::string substring = "_is_dominated";
 
     if (id.find(substring) != std::string::npos) {
       isl::id markNodeId = nodeCpp.mark_get_id();
-      nodeCpp = nodeCpp.parent().parent();
+      nodeCpp = nodeCpp.parent();
+
+      // the last schedule will be already in the
+      // correct shape no need to apply order_before.
+      if (nodeCpp.isa<isl::schedule_node_band>()) {
+        nodeCpp = updateMark(nodeCpp, markNodeId, id);
+        return nodeCpp.release();
+      }
+      
       assert(nodeCpp.isa<isl::schedule_node_filter>());
       isl::union_set domPattern = nodeCpp.filter_get_filter();
       nodeCpp = nodeCpp.parent().parent();
       assert(nodeCpp.isa<isl::schedule_node_band>());
       nodeCpp = nodeCpp.order_before(domPattern);
       nodeCpp = nodeCpp.parent().previous_sibling().child(0);
-      std::string::size_type i = id.find("_is_dominated");
-      id.erase(i, substring.length());
-      nodeCpp = nodeCpp.insert_mark(
-        isl::id::alloc(nodeCpp.get_ctx(), id, markNodeId.get_user()));
-      nodeCpp = nodeCpp.child(0).child(0);
-      nodeCpp = nodeCpp.del();
-    }
- 
+      nodeCpp = updateMark(nodeCpp, markNodeId, id);
+    } 
   } 
   return nodeCpp.release();
 }
@@ -1915,6 +1933,7 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
   if(!FLAGS_disable_tactics) {
     //root = wrapOnMatch(root, matcher, labelNode, bi).root();
     root = rebuildOnMatch(root, matcher, builder).root();
+    std::cout << root.to_str() << "\n";
     root = distributeLoops(root).root();
     //root = tileLoops(root);
     std::cout << root.to_str() << "\n";
