@@ -39,6 +39,9 @@ DEFINE_string(tactics_outer_tile_sizes,
 	      "1",
 	      "Comma-separated list of tile sizes for outer tiling");
 
+DEFINE_string(tactics_fusion_strategy,
+	      "Max",
+	      "Fusion strategy [Min or Max]");
 
 using DLTensorUPtr = std::unique_ptr<DLTensor, tc::DLTensorDeleter>;
 using DLConstTensorUPtr = std::unique_ptr<DLConstTensor, tc::DLTensorDeleter>;
@@ -217,6 +220,8 @@ template <typename Backend> void compile()
   }
 
   mappingOptions.tile(FLAGS_tactics_outer_tile_sizes);
+
+  mappingOptions.scheduleFusionStrategy(FLAGS_tactics_fusion_strategy);
   
   lang::TreeRef entryPoint = parsedTcs[entryPointName];
 
