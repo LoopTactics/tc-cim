@@ -555,6 +555,7 @@ isl::schedule optimizeGemmSchedule(
 */
 
 enum class GemmType {isNT, isNN, isTN};
+enum class GemvType {isNT, isNN};
 constexpr int TILE_FACTOR_CIM_DEVICE = 512;
 
 // utility function.
@@ -1050,6 +1051,57 @@ static bool hasGemvInitPatternImpl(
   return true;
 }
 
+std::tuple<bool, int, int, GemvType> lookUpPermutationOnReadGemv(isl::ctx ctx,
+    isl::union_map reads, int iPos) {
+  using namespace matchers;
+  auto _i = placeholder(ctx);
+  auto _j = placeholder(ctx);
+  auto _A = arrayPlaceholder();
+  auto _x = arrayPlaceholder();
+  auto _y = arrayPlaceholder();
+  auto psRead = 
+    allOf(access(_A, _i, _j), access(_y, _j), access(_x, _i));
+  auto readMatches = match(reads, psRead);
+  
+  if (readMatches.size() != 1)
+    return std::make_tuple(false, 0, 0, GemvType::isNN);
+  
+  auto iPosNN_NT = readMatches[0][_i].payload().inputDimPos_;
+  auto jPosNN_NT = readMatches[0][_j].payload().inputDimPos_;
+ 
+  if (iPos == iPosNN_NT)
+    return std::make_tuple(true, iPos, jPosNN_NT, GemvType::isNN);
+  
+  if (iPos == jPosNN_NT)
+    return std::make_tuple(true, iPos, iPosNN_NT, GemvType::isNT);
+
+  return std::make_tuple(false, 0, 0, GemvType::isNN);
+}
+
+std::tuple<bool, int, int, GemvType> isGemvCorePattern(isl::ctx ctx,
+    isl::union_map reads, isl::union_map writes) {
+  using namespace matchers;
+  auto _i = placeholder(ctx);
+  auto psWrite = allOf(access(_i));
+  auto writeMatches = match(writes, psWrite);
+  
+  if (writeMatches.size() != 1) {
+    return std::make_tuple(false, 0, 0, GemvType::isNN);
+  }
+
+  auto iPos = writeMatches[0][_i].payload().inputDimPos_;
+  auto matchedDims = lookUpPermutationOnReadGemv(ctx, reads, iPos);
+  if (!std::get<0>(matchedDims)) {
+    return std::make_tuple(false, 0, 0, GemvType::isNN);
+  }
+
+  iPos = std::get<1>(matchedDims);
+  auto jPos = std::get<2>(matchedDims);
+  auto type = std::get<3>(matchedDims);
+
+  return std::make_tuple(true, iPos, jPos, type);
+}
+
 // check access pattern for core statement in GEMV
 // We expect y(i) = y(i) + x(j) * A[i][j] _OR_
 //  y(i) + x(j) * A[j][i]
@@ -1070,55 +1122,12 @@ static bool hasGemvCorePatternImpl(
     return false;
 
   // TODO: check accesses dimensionality.
-
-  isl::ctx ctx = leaf.get_ctx();
-  using namespace matchers;
-  auto _i = placeholder(ctx);
-  auto _ii = placeholder(ctx);
-  auto _j = placeholder(ctx);
-  auto _A = arrayPlaceholder();
-  auto _B = arrayPlaceholder();
-  auto _C = arrayPlaceholder();
-  auto psRead = allOf(access(_A, _i, _j), access(_B, _j), access(_C, _i));
-  auto psWrite = allOf(access(_C, _ii));
-  auto readMatches = match(reads, psRead);
-  auto writeMatches = match(writes, psWrite);
-
-  if ((readMatches.size() != 1) || (writeMatches.size() != 1))
+  auto matches = isGemvCorePattern(leaf.get_ctx(), reads, writes);
+  if (!std::get<0>(matches))
     return false;
-
-  // placeholder and arrayPlaceholder are _not_ reused
-  // between different calls to allOf.
-  if ((writeMatches[0][_ii].payload().inputDimPos_ !=
-       readMatches[0][_i].payload().inputDimPos_) &&
-      (writeMatches[0][_ii].payload().inputDimPos_ !=
-       readMatches[0][_j].payload().inputDimPos_)) {
-    return false;
-  }
-
-  auto _C_read =
-      getArrayNameAndExtensionFromMap(reads, readMatches[0][_i].payload().inputDimPos_);
-  auto _C_write =
-      getArrayNameAndExtensionFromMap(writes, writeMatches[0][_ii].payload().inputDimPos_);
-  if (_C_read != _C_write)
-    return false;
-
-  bool isAtranspose = false;
-  if (writeMatches[0][_ii].payload().inputDimPos_ ==
-      readMatches[0][_i].payload().inputDimPos_) {
-    isAtranspose = false;
-  }
-
-  if (writeMatches[0][_ii].payload().inputDimPos_ ==
-      readMatches[0][_j].payload().inputDimPos_) {
-    isAtranspose = true;
-  }
-
-  if (mvi.i != readMatches[0][_i].payload().inputDimPos_)
-    return false;
-
-  if (mvi.writeToY != _C_read)
-    return false;
+  auto iPos = std::get<1>(matches);
+  auto jPos = std::get<2>(matches);
+  auto type = std::get<3>(matches);
 
   bool operation = false;
   try {
@@ -1130,9 +1139,6 @@ static bool hasGemvCorePatternImpl(
   if (!operation)
     return false;
 
-  auto iPos = readMatches[0][_i].payload().inputDimPos_;
-  auto jPos = readMatches[0][_j].payload().inputDimPos_;
-
   mvi.j = jPos;
   mvi.readFromA = getArrayNameAndExtensionFromMap(
       reads, iPos, jPos);
@@ -1140,7 +1146,9 @@ static bool hasGemvCorePatternImpl(
       getArrayNameAndExtensionFromMap(reads, iPos);
   mvi.readFromX =
       getArrayNameAndExtensionFromMap(reads, jPos);
-  mvi.isAtranspose = isAtranspose;
+  mvi.writeToY = 
+    getArrayNameAndExtensionFromMap(writes, iPos);
+  mvi.isAtranspose = (type == GemvType::isNT) ? true : false;
   auto matchedMap = getMapFromUnionMap(reads, jPos);
   mvi.incx = getStrideOnDim(isl::map::from(schedule), jPos, matchedMap); 
   return true;
@@ -1182,7 +1190,7 @@ static std::tuple<bool, int, int> isGemmInitPattern(isl::ctx ctx,
   return std::make_tuple(true, iPos, jPos);
 }
 
-std::tuple<bool, int, int, int, GemmType> lookUpPermutationOnRead(isl::ctx ctx,
+std::tuple<bool, int, int, int, GemmType> lookUpPermutationOnReadGemm(isl::ctx ctx,
   isl::union_map reads, int iPos, int jPos) {
   using namespace matchers; 
   auto _i = placeholder(ctx);
@@ -1222,7 +1230,7 @@ std::tuple<bool, int, int, int, GemmType> lookUpPermutationOnRead(isl::ctx ctx,
   if ((readMatchesTN.size() == 1) && (iPos == iPosTN) && (jPos == jPosTN))
     return std::make_tuple(true, iPosTN, jPosTN, kPosTN, GemmType::isTN);
 
-  return std::make_tuple(false, -1, -1, -1, GemmType::isNN);
+  return std::make_tuple(false, 0, 0, 0, GemmType::isNN);
 }
 
 // is the access pattern C(i,j) - A(i,k) - B(k,j) in "reads"
@@ -1240,7 +1248,7 @@ std::tuple<bool, int, int, int, GemmType> isGemmCorePattern(isl::ctx ctx,
 
   auto iPos = writeMatches[0][_i].payload().inputDimPos_;
   auto jPos = writeMatches[0][_j].payload().inputDimPos_; 
-  auto matchedDims = lookUpPermutationOnRead(ctx, reads, iPos, jPos);
+  auto matchedDims = lookUpPermutationOnReadGemm(ctx, reads, iPos, jPos);
   if (std::get<0>(matchedDims) == false)
     return std::make_tuple(false, 0, 0, 0, GemmType::isNT);
 
@@ -1259,8 +1267,6 @@ static bool hasGemmInitPatternImpl(
     isl::schedule_node leaf,
     MatMulInfo& mmi) {
   std::cout << __func__ << std::endl;
-  //std::cout << leaf.to_str() << "\n";
-  //std::cout << "STATEMENT :" << getHalideStatement(scop.scop(), leaf) << std::endl;
   auto schedule = leaf.get_prefix_schedule_union_map();
   if (!scheduleDimensionality(schedule, 2))
     return false;
@@ -1301,14 +1307,14 @@ static bool hasGemmInitPatternImpl(
 
 // check access pattern for core statement in GEMM
 // We expect C(i,j) = C(i,j) + A(i,k) * B(k,j) _OR_
-//  C(i,j) = C(i,j) + A(i,k) * B(j,k)
+//  C(i,j) = C(i,j) + A(i,k) * B(j,k) _OR_
+//  C(i,j) = C(i,j) + A(k,i) * B(k,j)
 //
 static bool hasGemmCorePatternImpl(
     const MappedScop& scop,
     isl::schedule_node leaf,
     MatMulInfo& mmi) {
   std::cout << __func__ << std::endl;
-  //std::cout << "STATEMENT :" << getHalideStatement(scop.scop(), leaf) << std::endl;
   auto schedule = leaf.get_prefix_schedule_union_map();
   if (!scheduleDimensionality(schedule, 3))
     return false;
