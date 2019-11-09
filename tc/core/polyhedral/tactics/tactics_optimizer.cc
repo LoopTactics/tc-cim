@@ -554,7 +554,7 @@ isl::schedule optimizeGemmSchedule(
 }
 */
 
-enum class GemmType {isNT, isNN};
+enum class GemmType {isNT, isNN, isTN};
 constexpr int TILE_FACTOR_CIM_DEVICE = 512;
 
 // utility function.
@@ -1195,8 +1195,11 @@ std::tuple<bool, int, int, int, GemmType> lookUpPermutationOnRead(isl::ctx ctx,
       allOf(access(_A, _i, _j), access(_B, _i, _k), access(_C, _k, _j));
   auto psReadNT =
       allOf(access(_A, _i, _j), access(_B, _i, _k), access(_C, _j, _k));
+  auto psReadTN =
+      allOf(access(_A, _i, _j), access(_B, _k, _i), access(_C, _k, _j));
   auto readMatchesNN = match(reads, psReadNN);
   auto readMatchesNT = match(reads, psReadNT); 
+  auto readMatchesTN = match(reads, psReadTN);
 
   auto iPosNN = readMatchesNN[0][_i].payload().inputDimPos_;
   auto jPosNN = readMatchesNN[0][_j].payload().inputDimPos_;
@@ -1211,6 +1214,13 @@ std::tuple<bool, int, int, int, GemmType> lookUpPermutationOnRead(isl::ctx ctx,
 
   if ((readMatchesNT.size() == 1) && (iPos == iPosNT) && (jPos == jPosNT))
     return std::make_tuple(true, iPosNT, jPosNT, kPosNT, GemmType::isNT);
+
+  auto iPosTN = readMatchesTN[0][_i].payload().inputDimPos_;  
+  auto jPosTN = readMatchesTN[0][_j].payload().inputDimPos_;
+  auto kPosTN = readMatchesTN[0][_k].payload().inputDimPos_;
+
+  if ((readMatchesTN.size() == 1) && (iPos == iPosTN) && (jPos == jPosTN))
+    return std::make_tuple(true, iPosTN, jPosTN, kPosTN, GemmType::isTN);
 
   return std::make_tuple(false, -1, -1, -1, GemmType::isNN);
 }
@@ -1351,8 +1361,8 @@ static bool hasGemmCorePatternImpl(
       mmi.alpha = collectConstantName(reads);
   }
 
-  mmi.isAtranspose = false;
-  mmi.isBtranspose = (type == GemmType::isNN) ? false : true;  
+  mmi.isAtranspose = (type == GemmType::isTN) ? true : false;
+  mmi.isBtranspose = (type == GemmType::isNT) ? true : false;  
   mmi.readFromC = _C_read;
   mmi.readFromA = getArrayNameAndExtensionFromMap(
       reads, iPos, kPos);
