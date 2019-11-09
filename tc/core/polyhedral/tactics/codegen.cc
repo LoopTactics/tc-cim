@@ -69,7 +69,7 @@ static std::string halideTypeString(const Halide::Type& t) {
   } else if (t.is_float() && t.bits() == 16) {
     return "half";
   } else if (t.is_float() && t.bits() == 32) {
-    return "float";
+    return "char";
   } else if (t.is_float() && t.bits() == 64) {
     return "double";
   }
@@ -476,6 +476,8 @@ void AstPrinter::emitStmt(isl::ast_node_user node) {
 
 // create GEMM blas call.
 // cimblas_gemm(
+//  transA : is A transpose?
+//  transB : is B transpose?
 //  m : specifies the number of rows for A and C
 //  n : specifies the number of cols for B and C
 //  k : specifies the number of cols for A and the number of rows for B
@@ -504,7 +506,9 @@ void AstPrinter::emitMatmulMark(isl::ast_node_mark mark) {
   int ldb = (payload->isBtranspose) ? std::max(1, k) : std::max(1, n);
   int ldc = std::max(1, m);
 
-  context_.ss << ws.tab() << "cimblas_gemm(" 
+  context_.ss << ws.tab() << "cimblas_gemm("
+              << payload->isAtranspose << ", "
+              << payload->isBtranspose << ", " 
               << m << ", " << n << ", " << k << ", "
               << payload->alpha << ", "
               << payload->readFromA.name << ", "
@@ -520,6 +524,7 @@ void AstPrinter::emitMatmulMark(isl::ast_node_mark mark) {
 
 // create GEMV blas call.
 // cimblas_gemv(
+//   transA : is A transpose?
 //   m : specifies the number of rows for A
 //   n : specifies the number of cols for A
 //   alpha : sclara alpha
@@ -542,6 +547,7 @@ void AstPrinter::emitGemvMark(isl::ast_node_mark mark) {
   int lda = std::max(1, n);
 
   context_.ss << ws.tab() << "cim_gemv(" 
+              << payload->isAtranspose << ", "
               << m << ", " << n << ", "
               << payload->alpha << ", "
               << payload->readFromA.name << ", "
@@ -729,6 +735,7 @@ void emitMappedTensorAccess(
     const Halide::Internal::IRNode* node,
     const vector<Halide::Expr>& subscripts,
     const CodegenStatementContext& context) {
+  std::cout << __func__ << std::endl;
   // Scalars are not promoted or remapped.
   if (subscripts.empty()) {
     context.ss << name << "[0]";
