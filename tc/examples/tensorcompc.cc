@@ -35,6 +35,11 @@ DEFINE_string(output, "-", "Name of the C output file");
 DEFINE_string(input_shapes, "", "Input shapes e.g., I0:16,32,16/I1:3,19,28");
 DEFINE_string(entrypoint, "", "Entrypoint to compile");
 
+DEFINE_string(tactics_outer_tile_sizes,
+	      "1",
+	      "Comma-separated list of tile sizes for outer tiling");
+
+
 using DLTensorUPtr = std::unique_ptr<DLTensor, tc::DLTensorDeleter>;
 using DLConstTensorUPtr = std::unique_ptr<DLConstTensor, tc::DLTensorDeleter>;
 
@@ -210,6 +215,8 @@ template <typename Backend> void compile()
 	      << std::endl;
     throw;
   }
+
+  mappingOptions.tile(FLAGS_tactics_outer_tile_sizes);
   
   lang::TreeRef entryPoint = parsedTcs[entryPointName];
 
