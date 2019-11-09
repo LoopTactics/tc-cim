@@ -1,0 +1,11 @@
+def kernel1mm(float(M,N) A0, float(N,K) B0,
+              float(P,Q) A1, float(Q,R) B1,
+              float(R,S) A2, float(S,T) B2,
+              float(U,V) A3, float(V,W) B3)
+    -> (C0, C1, C2, C3)
+{
+  C0(i,k) +=! A0(i, n) * B0(n, k)
+  C1(i,k) +=! A1(i, n) * B1(n, k)
+  C2(i,k) +=! A2(i, n) * B2(n, k)
+  C3(i,k) +=! A3(i, n) * B3(n, k)  
+}
