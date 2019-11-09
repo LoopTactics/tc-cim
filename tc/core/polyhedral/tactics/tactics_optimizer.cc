@@ -884,6 +884,9 @@ std::vector<DimInfo>extractDimInfoFromRange(isl::set range) {
       return isl_stat_ok;
     });
 
+    std::cout << "*****\n";
+    std::cout << minVal.to_str() << " " << maxVal.to_str() << "\n";
+    std::cout << "*****\n";
     res.push_back(DimInfo{std::stoi(minVal.to_str()),
                           (std::stoi(maxVal.to_str()) + 1)});
   }
@@ -1399,6 +1402,16 @@ static isl::union_map dropBatchedDimOnAccesses(isl::union_map accesses) {
   return res;
 }
 
+int extractBatchDim(isl::map access) {
+
+  isl::set range = access.range();
+  auto dimsInfo = extractDimInfoFromRange(range);
+  assert(dimsInfo.size() != 0 && "expect non empty");
+
+  return dimsInfo[0].ub - dimsInfo[0].lb;
+} 
+  
+
 // check access pattern for initialization statement in batched GEMM
 // We expect C(batchCount,i,j) = 0.0f
 //
@@ -1415,7 +1428,8 @@ static bool hasBatchedGemmInitPatternImpl(const MappedScop& scop,
   
   if ((reads.n_map() != 0) || (writes.n_map() != 1)) 
     return false;
-
+  
+  int batch = extractBatchDim(isl::map::from(writes));
   writes = dropBatchedDimOnAccesses(writes);
 
   auto matches = isGemmInitPattern(leaf.get_ctx(), writes);
@@ -1438,7 +1452,19 @@ static bool hasBatchedGemmInitPatternImpl(const MappedScop& scop,
        std::get<2>(matches)); 
   bmmi.i = std::get<1>(matches);
   bmmi.i = std::get<2>(matches);
+  bmmi.batch = batch;
   return true;
+}
+
+static bool checkOnBatchDim(isl::map write, isl::union_map reads, int batch) {
+  int batchDim = extractBatchDim(write);
+  auto v = vectorMapsFromUnionMap(reads);
+  for (const auto& m : v) {
+    int tmp = extractBatchDim(m);
+    if (tmp != batchDim)
+      return false;
+  }
+  return (batchDim == batch);
 }
 
 static bool hasBatchedGemmCorePatternImpl(const MappedScop& scop,
@@ -1453,6 +1479,9 @@ static bool hasBatchedGemmCorePatternImpl(const MappedScop& scop,
   auto writes = readsAndWrites.second;
 
   if ((reads.n_map() > 4) || (writes.n_map() != 1))
+    return false;
+
+  if (!checkOnBatchDim(isl::map::from(writes), reads, bmmi.batch))
     return false;
 
   writes = dropBatchedDimOnAccesses(writes);
@@ -1662,6 +1691,15 @@ static bool isNotDominatedImpl(const MappedScop& scop,
   isl::schedule_node dominatorBand = maybeBand;
   isl::union_map dominatorBandPrefix = 
     dominatorBand.get_prefix_schedule_union_map();
+
+  if (!dominatorBand.has_parent())
+    return true;
+
+  // unless we are dealing with the context.
+  isl::schedule_node context = dominatorBand.parent();
+  if (context.isa<isl::schedule_node_context>())
+    return true;
+
   isl::union_map bandPrefix =
     band.get_prefix_schedule_union_map();
 
