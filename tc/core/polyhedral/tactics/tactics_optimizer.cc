@@ -1692,13 +1692,13 @@ static bool isNotDominatedImpl(const MappedScop& scop,
   isl::union_map dominatorBandPrefix = 
     dominatorBand.get_prefix_schedule_union_map();
 
-  if (!dominatorBand.has_parent())
-    return true;
+  //if (!dominatorBand.has_parent())
+  //  return true;
 
   // unless we are dealing with the context.
-  isl::schedule_node context = dominatorBand.parent();
-  if (context.isa<isl::schedule_node_context>())
-    return true;
+  //isl::schedule_node context = dominatorBand.parent();
+  //if (context.isa<isl::schedule_node_context>())
+  //  return true;
 
   isl::union_map bandPrefix =
     band.get_prefix_schedule_union_map();
@@ -1886,6 +1886,10 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
       descr.partialSchedule = pointSchedule;
       return descr;
     };
+    auto dummyScheduler = [&]() {
+      auto descr = BandDescriptor(scheduleBody);  
+      return descr;
+    };
     auto marker = [&]() {
       return getMarker(scheduleBody.get_ctx(), labelNode, bi);
     };
@@ -1895,12 +1899,17 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
     auto getfilterCore = [&]() {
       return filterCore.filter_get_filter();
     };
-    builder = band(tileScheduler,
-                mark(marker,
-                  band(pointScheduler,
-                    sequence(
-                      filter(getfilterInitialization),
-                      filter(getfilterCore)))));
+    //builder = band(tileScheduler,
+    //            mark(marker,
+    //              band(pointScheduler,
+    //                sequence(
+    //                  filter(getfilterInitialization),
+    //                  filter(getfilterCore)))));
+    builder = mark(marker,
+                band(dummyScheduler,
+                  sequence(
+                    filter(getfilterInitialization),
+                    filter(getfilterCore))));
   }
                 
   if(!FLAGS_disable_tactics) {
