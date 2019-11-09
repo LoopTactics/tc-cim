@@ -138,6 +138,10 @@ DEFINE_bool(disable_tactics,
 	    false,
 	    "Disables all optimizations by Loop Tactics.");
 
+DEFINE_bool(disable_tactics_entrypoint,
+	    false,
+	    "Disables the generation of the autotuning entry point tactics_entrypoint.");
+
 uint64_t initRandomSeed() {
   static std::mutex mut;
   static bool inited = false;

@@ -68,6 +68,9 @@ DECLARE_bool(generate_tactics_main);
 // Disable Loop Tactics
 DECLARE_bool(disable_tactics);
 
+// Disable generation of a Loop Tactics autotuner entry point
+DECLARE_bool(disable_tactics_entrypoint);
+
 // Misc
 DECLARE_int64(random_seed);
 DECLARE_bool(schedule_tree_verbose_validation);

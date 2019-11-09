@@ -124,8 +124,10 @@ std::string MappedScop::codegen(const std::string& specializedName) const {
   code << emitTacticsKernel(specializedName, *mappedScopForCodegen)
        << std::endl;
 
-  code << emitTacticsEntryPoint(specializedName, *mappedScopForCodegen)
+  if(!FLAGS_disable_tactics_entrypoint) {
+    code << emitTacticsEntryPoint(specializedName, *mappedScopForCodegen)
        << std::endl;
+  }
 
   if(FLAGS_generate_tactics_main) {
     code << emitTacticsMain(specializedName, *mappedScopForCodegen)
