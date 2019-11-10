@@ -1710,7 +1710,7 @@ isl::schedule_node squeezeTree(isl::schedule_node root) {
   return root.root();
 }
 
-std::vector<std::string> getStatementNames(std::vector<isl::map> maps) {
+static std::vector<std::string> getStatementNames(std::vector<isl::map> maps) {
   std::vector<std::string> res{};
   for(const auto& m : maps) {
     isl::set dom = m.domain();
@@ -1720,7 +1720,7 @@ std::vector<std::string> getStatementNames(std::vector<isl::map> maps) {
   return res;
 }
 
-isl::schedule_node updateMark(isl::schedule_node nodeCpp, isl::id id, std::string idStr) {
+static isl::schedule_node updateMark(isl::schedule_node nodeCpp, isl::id id, std::string idStr) {
   
   idStr = idStr.substr(0, idStr.find("@"));
   std::string substring = "_is_dominated";
@@ -1735,54 +1735,88 @@ isl::schedule_node updateMark(isl::schedule_node nodeCpp, isl::id id, std::strin
   return nodeCpp;
 }
 
-
-__isl_give isl_schedule_node *distributeLoopsImpl(__isl_take isl_schedule_node* node,
-    void* user) {
-  isl::schedule_node nodeCpp = isl::manage(node);
-  if (nodeCpp.isa<isl::schedule_node_mark>()) {
-
-    std::string id = nodeCpp.mark_get_id().to_str();
-    id = id.substr(0, id.find("@"));
-    std::string substring = "_is_dominated";
-
-    if (id.find(substring) != std::string::npos) {
-      isl::id markNodeId = nodeCpp.mark_get_id();
-      nodeCpp = nodeCpp.parent();
-
-      // the last schedule will be already in the
-      // correct shape no need to apply order_before.
-      if (nodeCpp.isa<isl::schedule_node_band>()) {
-        nodeCpp = updateMark(nodeCpp, markNodeId, id);
-        return nodeCpp.release();
-      }
-      
-      assert(nodeCpp.isa<isl::schedule_node_filter>());
-      isl::union_set domPattern = nodeCpp.filter_get_filter();
-      nodeCpp = nodeCpp.parent().parent();
-      // merge the reminder of previous order_before with
-      // the current band.
-      if (nodeCpp.parent().isa<isl::schedule_node_band>()) {
-        nodeCpp = isl::manage(
-          isl_schedule_node_band_sink(nodeCpp.parent().release()));
-      }
-      assert(nodeCpp.isa<isl::schedule_node_band>());
-      nodeCpp = nodeCpp.order_before(domPattern);
-      nodeCpp = nodeCpp.parent().previous_sibling().child(0);
-      nodeCpp = updateMark(nodeCpp, markNodeId, id);
-    } 
-  } 
-  return nodeCpp.release();
+static std::vector<isl::set> vectorSetFromUnionSet(isl::union_set uset) {
+  std::vector<isl::set> res{};
+  uset.foreach_set([&](isl::set s) -> isl_stat {
+    res.push_back(s);
+    return isl_stat_ok;
+  });
+  return res;
 }
 
+/*
+static isl::schedule_node applyDistribution(isl::schedule_node node, isl::union_set f) {
+  std::stack<isl::schedule_node> nodeStack;
+  nodeStack.push(node);
+  
+  while (nodeStack.empty() == false) {
+    node = nodeStack.top();
+    nodeStack.pop();
+    
+    if (node.isa<isl::schedule_node_band>()) {
+      std::cout << "++++++\n";
+      std::cout << node.to_str() << "\n";
+      std::cout << "++++++\n";
+    }
 
-// distribute loop in the band which dominates the matcher's band.
-// limitations:
-// 1. This function work only with the matcher provided.
-// 2. Moving the detected pattern before will not break any deps.
-static isl::schedule_node distributeLoops(isl::schedule_node node) {
-  node = isl::manage(isl_schedule_node_map_descendant_bottom_up(
-    node.release(), distributeLoopsImpl, nullptr));
-  return node.root();
+    if (node.has_parent())
+      nodeStack.push(node.parent());
+  }
+  return node;
+}
+*/
+
+//static bool hasAllDims(isl::map map) {
+
+//}
+
+
+static isl::schedule_node handleDistribution(isl::schedule_node root,
+    isl::union_set f) {
+
+  auto handleDistributionImpl = [&](isl::schedule_node node) {
+    if (node.isa<isl::schedule_node_band>()) {
+      isl::union_map schedule =
+        node.get_subtree_schedule_union_map();
+      isl::union_map umap = schedule.intersect_domain(f);
+      umap = umap.apply_domain(schedule); 
+      isl::union_set uset = umap.domain();
+      auto vset = vectorSetFromUnionSet(uset);
+      for (const auto& s : vset)
+        std::cout << s.params().to_str() << std::endl;
+      //std::cout << umap.coalesce().domain().to_str() << "\n";
+      
+      //if (hasAllDims(umap)) {
+      //  std::cout << schedule.to_str() << "\n";
+      //}
+    }
+    return node; 
+  };
+  root = root.map_descendant_bottom_up(handleDistributionImpl);
+  return root;
+}
+
+static isl::schedule_node distributeLoops(isl::schedule_node root) {
+
+  std::vector<isl::union_set> targetFilter{};
+  auto distributeLoopsImpl = [&](isl::schedule_node node) {
+    if (node.isa<isl::schedule_node_mark>()) {
+      std::string id = node.mark_get_id().to_str();
+      id = id.substr(0, id.find("@"));
+      std::string substring = "_is_dominated";
+      if (id.find(substring) != std::string::npos) {
+        isl::id markNodeId = node.mark_get_id();
+        node = node.parent();
+        assert(node.isa<isl::schedule_node_filter>());
+        targetFilter.push_back(node.filter_get_filter());
+      }
+    }
+    return node;
+  };
+
+  root = root.map_descendant_bottom_up(distributeLoopsImpl).root();
+  root = handleDistribution(root, targetFilter[0]);
+  return root.root();
 }
 
 // Is the matcher's band not dominated by an ancestor band
@@ -1819,6 +1853,10 @@ static bool isNotDominatedImpl(const MappedScop& scop,
 
   isl::union_map bandPrefix =
     band.get_prefix_schedule_union_map();
+
+  //std::cout << "@@@@@@@@@@@@\n";
+  //std::cout << dominatorBandPrefix.to_str() << "\n";
+  //std::cout << "@@@@@@@@@@@@\n";
 
   if (bandPrefix.domain().is_subset(dominatorBandPrefix.domain())) {
     return false;
