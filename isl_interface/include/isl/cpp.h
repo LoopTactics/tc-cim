@@ -2593,6 +2593,7 @@ public:
   inline schedule_node parent() const;
   inline schedule_node previous_sibling() const;
   inline schedule_node root() const;
+  inline union_map get_subtree_schedule_union_map() const;
   typedef isl_schedule_node* isl_ptr_t;
 };
 
@@ -14662,6 +14663,13 @@ schedule_constraints schedule_constraints::set_validity(union_map validity) cons
 }
 
 // implementations for isl::schedule_node
+
+union_map schedule_node::get_subtree_schedule_union_map() const
+{
+  auto res = isl_schedule_node_get_subtree_schedule_union_map(get());
+  return manage(res);
+}
+
 set schedule_node::context_get_context() const
 {
   auto res = isl_schedule_node_context_get_context(get());
