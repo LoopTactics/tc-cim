@@ -2,8 +2,8 @@
 #include <iostream>
 #include "tc/core/polyhedral/matchers/access.h"
 #include "tc/core/polyhedral/matchers/access_patterns.h"
-#include "tc/core/polyhedral/matchers/matchers.h"
 #include "tc/core/polyhedral/matchers/builders.h"
+#include "tc/core/polyhedral/matchers/matchers.h"
 #include "tc/core/polyhedral/schedule_isl_conversion.h"
 
 namespace tc {
@@ -554,8 +554,8 @@ isl::schedule optimizeGemmSchedule(
 }
 */
 
-enum class GemmType {isNT, isNN, isTN};
-enum class GemvType {isNT, isNN};
+enum class GemmType { isNT, isNN, isTN };
+enum class GemvType { isNT, isNN };
 constexpr int TILE_FACTOR_CIM_DEVICE = 512;
 
 // given the union map "umap" return a std::vector of map
@@ -578,19 +578,18 @@ static std::vector<isl::map> vectorMapsFromUnionMap(isl::union_map umap) {
 // NOTE: This is not always possible. Cutting children
 // in set or sequence is not allowed by ISL and as a consequence
 // by Loop Tactics.
-static isl::schedule_node
-rebuild(isl::schedule_node node,
-        const builders::ScheduleNodeBuilder &replacement) {
-
+static isl::schedule_node rebuild(
+    isl::schedule_node node,
+    const builders::ScheduleNodeBuilder& replacement) {
   node = node.cut();
   node = replacement.insertAt(node);
   return node;
 }
 
 // check schedule dimensionality
-static bool scheduleDimensionality(isl::union_map schedule, 
-  int dimensionality) {
-
+static bool scheduleDimensionality(
+    isl::union_map schedule,
+    int dimensionality) {
   if (schedule.n_map() != 1)
     return false;
   isl::map scheduleAsMap = isl::map::from(schedule);
@@ -630,13 +629,13 @@ isl::schedule_node wrapNodeIfMatches(
       node = node.insert_mark(
           isl::id::alloc(node.get_ctx(), marker, new MatMulInfo{p.mmi}));
     else if (marker == "__tactics_batched_gemm")
-      node = node.insert_mark(
-        isl::id::alloc(node.get_ctx(), marker, new BatchedMatMulInfo{p.bmmi}));
+      node = node.insert_mark(isl::id::alloc(
+          node.get_ctx(), marker, new BatchedMatMulInfo{p.bmmi}));
     else if (marker == "__tactics_gemm_is_dominated")
       node = node.insert_mark(
-        isl::id::alloc(node.get_ctx(), marker, new MatMulInfo{p.mmi}));
+          isl::id::alloc(node.get_ctx(), marker, new MatMulInfo{p.mmi}));
     else {
-      std::cout << marker << std::endl; 
+      std::cout << marker << std::endl;
       assert(0 && "case not defined");
     }
   }
@@ -665,7 +664,8 @@ isl::schedule_node wrapOnMatch(
   return node;
 }
 
-isl::schedule_node rebuildIfMatches(isl::schedule_node node,
+isl::schedule_node rebuildIfMatches(
+    isl::schedule_node node,
     const matchers::ScheduleNodeMatcher& pattern,
     const builders::ScheduleNodeBuilder& replacement) {
   if (matchers::ScheduleNodeMatcher::isMatching(pattern, node))
@@ -675,13 +675,13 @@ isl::schedule_node rebuildIfMatches(isl::schedule_node node,
 
 isl::schedule_node rebuildOnMatch(
     isl::schedule_node node,
-    const matchers::ScheduleNodeMatcher& pattern, 
+    const matchers::ScheduleNodeMatcher& pattern,
     const builders::ScheduleNodeBuilder& replacement) {
   node = rebuildIfMatches(node, pattern, replacement);
-  
+
   if (node.isa<isl::schedule_node_mark>())
     return node;
-  
+
   for (int i = 0; i < node.n_children(); i++)
     node = rebuildOnMatch(node.child(i), pattern, replacement).parent();
 
@@ -705,29 +705,30 @@ static std::string getCurryId(isl::map map) {
 }
 
 static isl::union_map getUnscheduledAccessFromScheduled(
-    isl::union_map scheduledAcc, isl::union_map nonScheduledAcc) {
-  
+    isl::union_map scheduledAcc,
+    isl::union_map nonScheduledAcc) {
   isl::union_map res = isl::union_map::empty(scheduledAcc.get_space());
   auto nonScheduled = vectorMapsFromUnionMap(nonScheduledAcc);
   auto scheduled = vectorMapsFromUnionMap(scheduledAcc);
-  
+
   for (auto m : scheduled) {
     std::string curryIdScheduled = getCurryId(m);
     for (auto n : nonScheduled) {
       std::string curryIdNonScheduled = getCurryId(n);
-      if (curryIdScheduled == curryIdNonScheduled) {  
+      if (curryIdScheduled == curryIdNonScheduled) {
         if (res.is_empty())
           res = isl::union_map(n);
-        else 
+        else
           res = res.unite(isl::union_map(n));
       }
     }
-  } 
+  }
   return res;
 }
 
 static isl::union_map getUnscheduledWritesFromScheduled(
-    isl::union_map scheduledAcc, const MappedScop& scop) {
+    isl::union_map scheduledAcc,
+    const MappedScop& scop) {
   if (scheduledAcc.n_map() == 0)
     return isl::union_map::empty(scheduledAcc.get_space());
   auto& lscop = scop.scop();
@@ -736,7 +737,8 @@ static isl::union_map getUnscheduledWritesFromScheduled(
 }
 
 static isl::union_map getUnscheduledReadsFromScheduled(
-    isl::union_map scheduledAcc, const MappedScop& scop) {
+    isl::union_map scheduledAcc,
+    const MappedScop& scop) {
   if (scheduledAcc.n_map() == 0)
     return isl::union_map::empty(scheduledAcc.get_space());
   auto& lscop = scop.scop();
@@ -744,18 +746,19 @@ static isl::union_map getUnscheduledReadsFromScheduled(
   return getUnscheduledAccessFromScheduled(scheduledAcc, reads);
 }
 
-// get unscheduled access for "node". 
+// get unscheduled access for "node".
 // we first get the scheduled accesses that belong to node and
 // we derive the un-scheduled one from them.
 // TODO: can we avoid scheduled access relations?
-static std::pair<isl::union_map, isl::union_map> 
-    getUnScheduledReadsAndWritesForNode(const MappedScop& scop, isl::schedule_node node) {
- 
+static std::pair<isl::union_map, isl::union_map>
+getUnScheduledReadsAndWritesForNode(
+    const MappedScop& scop,
+    isl::schedule_node node) {
   auto scheduled = getScheduledReadsAndWritesForNode(scop, node);
-  isl::union_map unScheduledreads =  
-    getUnscheduledReadsFromScheduled(scheduled.first, scop);
+  isl::union_map unScheduledreads =
+      getUnscheduledReadsFromScheduled(scheduled.first, scop);
   isl::union_map unScheduledWrites =
-    getUnscheduledWritesFromScheduled(scheduled.second, scop);
+      getUnscheduledWritesFromScheduled(scheduled.second, scop);
   unScheduledreads = unScheduledreads.intersect_domain(node.get_domain());
   unScheduledWrites = unScheduledWrites.intersect_domain(node.get_domain());
   return std::make_pair(unScheduledreads, unScheduledWrites);
@@ -918,24 +921,22 @@ static isl::map matchDim(const std::vector<isl::map>& maps, Args... args) {
   return maps[0];
 }
 
-std::vector<DimInfo>extractDimInfoFromRange(isl::set range) {
-
-  std::vector<DimInfo>res{};
+std::vector<DimInfo> extractDimInfoFromRange(isl::set range) {
+  std::vector<DimInfo> res{};
   if (range.n_dim() == 0)
     return res;
-  
+
   size_t dims = range.n_dim();
   for (size_t i = 0; i < dims; i++) {
-    
     auto min = range.dim_min(i);
     auto max = range.dim_max(i);
-    
+
     assert(min.n_piece() == 1);
     assert(max.n_piece() == 1);
-  
+
     isl::val minVal;
     isl::val maxVal;
-  
+
     min.foreach_piece([&](isl::set s, isl::aff aff) {
       minVal = aff.get_constant_val();
       return isl_stat_ok;
@@ -945,8 +946,8 @@ std::vector<DimInfo>extractDimInfoFromRange(isl::set range) {
       return isl_stat_ok;
     });
 
-    res.push_back(DimInfo{std::stoi(minVal.to_str()),
-                          (std::stoi(maxVal.to_str()) + 1)});
+    res.push_back(
+        DimInfo{std::stoi(minVal.to_str()), (std::stoi(maxVal.to_str()) + 1)});
   }
 
   return res;
@@ -956,7 +957,9 @@ std::vector<DimInfo>extractDimInfoFromRange(isl::set range) {
 // that matches with "args". "args" is a set of dimensions matched with
 // the access relation matchers.
 template <typename... Args>
-static ArrayInfo getArrayNameAndExtensionFromMap(isl::union_map umap, Args... args) {
+static ArrayInfo getArrayNameAndExtensionFromMap(
+    isl::union_map umap,
+    Args... args) {
   static_assert(are_same<int, Args...>{}, "must be of type int");
 
   std::vector<isl::map> maps = vectorMapsFromUnionMap(umap);
@@ -964,7 +967,7 @@ static ArrayInfo getArrayNameAndExtensionFromMap(isl::union_map umap, Args... ar
   isl::map result = matchDim(maps, args...);
   assert(!result.is_null() && "expect not null");
   auto name = getName(result);
-  auto range = result.range(); 
+  auto range = result.range();
   return ArrayInfo{name, extractDimInfoFromRange(range)};
 }
 
@@ -972,13 +975,15 @@ static ArrayInfo getArrayNameAndExtensionFromMap(isl::union_map umap, Args... ar
 // that matches with "args". "args" is a set of dimensions matched with
 // the access relation matchers.
 template <typename... Args>
-static ArrayInfo getArrayNameAndExtensionFromMap(std::vector<isl::map> maps, Args... args) {
+static ArrayInfo getArrayNameAndExtensionFromMap(
+    std::vector<isl::map> maps,
+    Args... args) {
   static_assert(are_same<int, Args...>{}, "must be of type int");
 
   isl::map result = matchDim(maps, args...);
   assert(!result.is_null() && "expect not null");
   auto name = getName(result);
-  auto range = result.range(); 
+  auto range = result.range();
   return ArrayInfo{name, extractDimInfoFromRange(range)};
 }
 
@@ -989,22 +994,21 @@ static isl::map getMapFromUnionMap(isl::union_map umap, Args... args) {
   static_assert(are_same<int, Args...>{}, "must be of type int");
 
   std::vector<isl::map> maps = vectorMapsFromUnionMap(umap);
-  
+
   isl::map result = matchDim(maps, args...);
   return result;
 }
 
 // return true if the access has dimensionality x
 std::function<bool(isl::map map)> isXd(size_t x) {
-  return [x](isl::map map) { 
-    if (map.dim(isl::dim::out) != x)  
+  return [x](isl::map map) {
+    if (map.dim(isl::dim::out) != x)
       return false;
     return true;
   };
 }
 
 std::function<bool(isl::map map)> isConstant() {
-
   return [](isl::map map) {
     if (map.dim(isl::dim::out) != 0)
       return false;
@@ -1035,9 +1039,9 @@ static bool _oneOf(isl::union_map umap, std::function<bool(isl::map)> f) {
 }
 
 // Create a map in the provided domain which maps from one
-// element of the provided domain to another element. The mapping 
+// element of the provided domain to another element. The mapping
 // is made such that all point in the map are equal exept for
-// the dimension indexes by posDim. The dimension indexes by 
+// the dimension indexes by posDim. The dimension indexes by
 // posDim will be such that the input dimension is strictly smaller
 // than the output one.
 static isl::map getEqualAndLarger(int posDim, isl::space dom) {
@@ -1055,7 +1059,6 @@ static isl::map getEqualAndLarger(int posDim, isl::space dom) {
 
 // get the stride on dimension "dim"
 static int getStrideOnDim(isl::map schedule, int dim, isl::map access) {
-
   isl::space space = schedule.get_space().range();
   isl::map nextScatt = getEqualAndLarger(dim, space);
   nextScatt = nextScatt.apply_domain(access);
@@ -1063,7 +1066,7 @@ static int getStrideOnDim(isl::map schedule, int dim, isl::map access) {
   nextScatt = nextScatt.lexmin();
   isl::set deltas = nextScatt.deltas();
 
-  isl::pw_aff aff = deltas.dim_max(0); 
+  isl::pw_aff aff = deltas.dim_max(0);
   assert(aff.n_piece() == 1 && "expect single piece");
   int stride = -1;
   aff.foreach_piece([&](isl::set s, isl::aff a) {
@@ -1116,7 +1119,7 @@ static bool hasGemvInitPatternImpl(
 
   auto iPos = writeMatches[0][_i].payload().inputDimPos_;
 
-  mvi.writeToY = getArrayNameAndExtensionFromMap(writes, iPos); 
+  mvi.writeToY = getArrayNameAndExtensionFromMap(writes, iPos);
   mvi.i = writeMatches[0][_i].payload().inputDimPos_;
   isl::map m = getMapFromUnionMap(writes, iPos);
   // TODO: this may be not needed as the access pattern matchers
@@ -1126,40 +1129,39 @@ static bool hasGemvInitPatternImpl(
   return true;
 }
 
-std::tuple<bool, int, int, GemvType> lookUpPermutationOnReadGemv(isl::ctx ctx,
-    isl::union_map reads, int iPos) {
+std::tuple<bool, int, int, GemvType>
+lookUpPermutationOnReadGemv(isl::ctx ctx, isl::union_map reads, int iPos) {
   using namespace matchers;
   auto _i = placeholder(ctx);
   auto _j = placeholder(ctx);
   auto _A = arrayPlaceholder();
   auto _x = arrayPlaceholder();
   auto _y = arrayPlaceholder();
-  auto psRead = 
-    allOf(access(_A, _i, _j), access(_y, _j), access(_x, _i));
+  auto psRead = allOf(access(_A, _i, _j), access(_y, _j), access(_x, _i));
   auto readMatches = match(reads, psRead);
-  
+
   if (readMatches.size() != 1)
     return std::make_tuple(false, 0, 0, GemvType::isNN);
-  
+
   auto iPosNN_NT = readMatches[0][_i].payload().inputDimPos_;
   auto jPosNN_NT = readMatches[0][_j].payload().inputDimPos_;
- 
+
   if (iPos == iPosNN_NT)
     return std::make_tuple(true, iPos, jPosNN_NT, GemvType::isNN);
-  
+
   if (iPos == jPosNN_NT)
     return std::make_tuple(true, iPos, iPosNN_NT, GemvType::isNT);
 
   return std::make_tuple(false, 0, 0, GemvType::isNN);
 }
 
-std::tuple<bool, int, int, GemvType> isGemvCorePattern(isl::ctx ctx,
-    isl::union_map reads, isl::union_map writes) {
+std::tuple<bool, int, int, GemvType>
+isGemvCorePattern(isl::ctx ctx, isl::union_map reads, isl::union_map writes) {
   using namespace matchers;
   auto _i = placeholder(ctx);
   auto psWrite = allOf(access(_i));
   auto writeMatches = match(writes, psWrite);
-  
+
   if (writeMatches.size() != 1) {
     return std::make_tuple(false, 0, 0, GemvType::isNN);
   }
@@ -1215,27 +1217,22 @@ static bool hasGemvCorePatternImpl(
     return false;
 
   mvi.j = jPos;
-  mvi.readFromA = getArrayNameAndExtensionFromMap(
-      reads, iPos, jPos);
-  mvi.readFromY =
-      getArrayNameAndExtensionFromMap(reads, iPos);
-  mvi.readFromX =
-      getArrayNameAndExtensionFromMap(reads, jPos);
-  mvi.writeToY = 
-    getArrayNameAndExtensionFromMap(writes, iPos);
+  mvi.readFromA = getArrayNameAndExtensionFromMap(reads, iPos, jPos);
+  mvi.readFromY = getArrayNameAndExtensionFromMap(reads, iPos);
+  mvi.readFromX = getArrayNameAndExtensionFromMap(reads, jPos);
+  mvi.writeToY = getArrayNameAndExtensionFromMap(writes, iPos);
   mvi.isAtranspose = (type == GemvType::isNT) ? true : false;
   auto matchedMap = getMapFromUnionMap(reads, jPos);
-  mvi.incx = getStrideOnDim(isl::map::from(schedule), jPos, matchedMap); 
+  mvi.incx = getStrideOnDim(isl::map::from(schedule), jPos, matchedMap);
   return true;
 }
 
 // collect access name for a constant access in "umap"
-// We assume only one constant access in "umap" and 
+// We assume only one constant access in "umap" and
 // we expect to find it.
 isl::map collectConstant(isl::union_map umap) {
-
   auto unionMapAsMaps = vectorMapsFromUnionMap(umap);
-  for (const auto& m : unionMapAsMaps) 
+  for (const auto& m : unionMapAsMaps)
     if (m.dim(isl::dim::out) == 0)
       return m;
   assert(0 && "cannot find any constant");
@@ -1244,34 +1241,37 @@ isl::map collectConstant(isl::union_map umap) {
 
 // collect access name for a constant map in "umap"
 std::string collectConstantName(isl::union_map umap) {
-
   auto tmp = collectConstant(umap);
   return getName(tmp);
 }
 
 // is the access pattern C(i,j) = 0 in "writes"?
-static std::tuple<bool, int, int> isGemmInitPattern(isl::ctx ctx,
-  isl::union_map writes) {
+static std::tuple<bool, int, int> isGemmInitPattern(
+    isl::ctx ctx,
+    isl::union_map writes) {
   std::cout << __func__ << std::endl;
   std::cout << writes.to_str() << "\n";
   using namespace matchers;
   auto _i = placeholder(ctx);
   auto _j = placeholder(ctx);
-  auto matches = match(writes, allOf(access(_i,_j)));
+  auto matches = match(writes, allOf(access(_i, _j)));
 
   if (matches.size() != 1) {
     std::cout << matches.size() << std::endl;
     return std::make_tuple(false, 0, 0);
   }
-  
+
   auto iPos = matches[0][_i].payload().inputDimPos_;
-  auto jPos = matches[0][_j].payload().inputDimPos_; 
+  auto jPos = matches[0][_j].payload().inputDimPos_;
   return std::make_tuple(true, iPos, jPos);
 }
 
-std::tuple<bool, int, int, int, GemmType> lookUpPermutationOnReadGemm(isl::ctx ctx,
-  isl::union_map reads, int iPos, int jPos) {
-  using namespace matchers; 
+std::tuple<bool, int, int, int, GemmType> lookUpPermutationOnReadGemm(
+    isl::ctx ctx,
+    isl::union_map reads,
+    int iPos,
+    int jPos) {
+  using namespace matchers;
   auto _i = placeholder(ctx);
   auto _j = placeholder(ctx);
   auto _k = placeholder(ctx);
@@ -1285,13 +1285,13 @@ std::tuple<bool, int, int, int, GemmType> lookUpPermutationOnReadGemm(isl::ctx c
   auto psReadTN =
       allOf(access(_A, _i, _j), access(_B, _k, _i), access(_C, _k, _j));
   auto readMatchesNN = match(reads, psReadNN);
-  auto readMatchesNT = match(reads, psReadNT); 
+  auto readMatchesNT = match(reads, psReadNT);
   auto readMatchesTN = match(reads, psReadTN);
 
   auto iPosNN = readMatchesNN[0][_i].payload().inputDimPos_;
   auto jPosNN = readMatchesNN[0][_j].payload().inputDimPos_;
   auto kPosNN = readMatchesNN[0][_k].payload().inputDimPos_;
-  
+
   if ((readMatchesNN.size() == 1) && (iPos == iPosNN) && (jPos == jPosNN))
     return std::make_tuple(true, iPosNN, jPosNN, kPosNN, GemmType::isNN);
 
@@ -1302,7 +1302,7 @@ std::tuple<bool, int, int, int, GemmType> lookUpPermutationOnReadGemm(isl::ctx c
   if ((readMatchesNT.size() == 1) && (iPos == iPosNT) && (jPos == jPosNT))
     return std::make_tuple(true, iPosNT, jPosNT, kPosNT, GemmType::isNT);
 
-  auto iPosTN = readMatchesTN[0][_i].payload().inputDimPos_;  
+  auto iPosTN = readMatchesTN[0][_i].payload().inputDimPos_;
   auto jPosTN = readMatchesTN[0][_j].payload().inputDimPos_;
   auto kPosTN = readMatchesTN[0][_k].payload().inputDimPos_;
 
@@ -1314,8 +1314,8 @@ std::tuple<bool, int, int, int, GemmType> lookUpPermutationOnReadGemm(isl::ctx c
 
 // is the access pattern C(i,j) - A(i,k) - B(k,j) in "reads"
 // and C(i,j) in "writes"?
-std::tuple<bool, int, int, int, GemmType> isGemmCorePattern(isl::ctx ctx,
-  isl::union_map reads, isl::union_map writes) {
+std::tuple<bool, int, int, int, GemmType>
+isGemmCorePattern(isl::ctx ctx, isl::union_map reads, isl::union_map writes) {
   using namespace matchers;
   auto _i = placeholder(ctx);
   auto _j = placeholder(ctx);
@@ -1326,7 +1326,7 @@ std::tuple<bool, int, int, int, GemmType> isGemmCorePattern(isl::ctx ctx,
     return std::make_tuple(false, 0, 0, 0, GemmType::isNT);
 
   auto iPos = writeMatches[0][_i].payload().inputDimPos_;
-  auto jPos = writeMatches[0][_j].payload().inputDimPos_; 
+  auto jPos = writeMatches[0][_j].payload().inputDimPos_;
   auto matchedDims = lookUpPermutationOnReadGemm(ctx, reads, iPos, jPos);
   if (std::get<0>(matchedDims) == false)
     return std::make_tuple(false, 0, 0, 0, GemmType::isNT);
@@ -1337,14 +1337,6 @@ std::tuple<bool, int, int, int, GemmType> isGemmCorePattern(isl::ctx ctx,
   auto type = std::get<4>(matchedDims);
   return std::make_tuple(true, iPos, jPos, kPos, type);
 }
-
-//static std::string getStmtName(isl::map map) {
-//  isl::set dom = map.domain();
-//  if (dom.has_tuple_name())
-//    return dom.get_tuple_name();
-//  assert(0 && "cannot get stmt name");
-//  return "";
-//}
 
 // check access pattern for initialization statement in GEMM
 // We expect C(i,j) = 0.0f
@@ -1359,7 +1351,7 @@ static bool hasGemmInitPatternImpl(
     return false;
   }
 
-  //auto readsAndWrites = getScheduledReadsAndWritesForNode(scop, leaf);
+  // auto readsAndWrites = getScheduledReadsAndWritesForNode(scop, leaf);
   auto readsAndWrites = getUnScheduledReadsAndWritesForNode(scop, leaf);
   auto reads = readsAndWrites.first;
   auto writes = readsAndWrites.second;
@@ -1367,13 +1359,13 @@ static bool hasGemmInitPatternImpl(
   // we assume initialization statement with zero.
   // so we expect only a write.
   if ((reads.n_map() != 0) && (writes.n_map() != 1)) {
-    return false; 
+    return false;
   }
 
   if (!_allOf(writes, isXd(2))) {
     return false;
   }
-  
+
   auto writeMatches = isGemmInitPattern(leaf.get_ctx(), writes);
   if (!std::get<0>(writeMatches)) {
     std::cout << "patterns do not match\n";
@@ -1391,9 +1383,7 @@ static bool hasGemmInitPatternImpl(
     return false;
 
   mmi.writeToCInit = getArrayNameAndExtensionFromMap(
-      writes,
-      std::get<1>(writeMatches),
-      std::get<2>(writeMatches));
+      writes, std::get<1>(writeMatches), std::get<2>(writeMatches));
   mmi.i = std::get<1>(writeMatches);
   mmi.j = std::get<2>(writeMatches);
   return true;
@@ -1416,7 +1406,7 @@ static bool hasGemmCorePatternImpl(
   auto reads = readsAndWrites.first;
   auto writes = readsAndWrites.second;
 
-  if ((reads.n_map() > 4) || (writes.n_map() != 1)) 
+  if ((reads.n_map() > 4) || (writes.n_map() != 1))
     return false;
 
   // TODO: check access dimensionality.
@@ -1429,16 +1419,13 @@ static bool hasGemmCorePatternImpl(
   auto kPos = std::get<3>(matches);
   auto type = std::get<4>(matches);
 
-  auto _C_write = getArrayNameAndExtensionFromMap(
-      writes, iPos, jPos);
-  auto _C_read = getArrayNameAndExtensionFromMap(
-      reads, iPos, jPos);
-  
+  auto _C_write = getArrayNameAndExtensionFromMap(writes, iPos, jPos);
+  auto _C_read = getArrayNameAndExtensionFromMap(reads, iPos, jPos);
+
   if (_C_write != _C_read)
     return false;
 
-  if ((mmi.i != iPos) ||
-      (mmi.j != jPos))
+  if ((mmi.i != iPos) || (mmi.j != jPos))
     return false;
 
   if (mmi.writeToCInit != _C_write)
@@ -1462,52 +1449,49 @@ static bool hasGemmCorePatternImpl(
   }
 
   mmi.isAtranspose = (type == GemmType::isTN) ? true : false;
-  mmi.isBtranspose = (type == GemmType::isNT) ? true : false;  
+  mmi.isBtranspose = (type == GemmType::isNT) ? true : false;
   mmi.readFromC = _C_read;
-  mmi.readFromA = getArrayNameAndExtensionFromMap(
-      reads, iPos, kPos);
-  mmi.readFromB = getArrayNameAndExtensionFromMap(
-      reads, kPos, jPos);
+  mmi.readFromA = getArrayNameAndExtensionFromMap(reads, iPos, kPos);
+  mmi.readFromB = getArrayNameAndExtensionFromMap(reads, kPos, jPos);
   mmi.writeToC = _C_write;
   return true;
 }
 
 static isl::union_map dropBatchedDimOnAccesses(isl::union_map accesses) {
-
   assert(accesses.n_map() != 0 && "expect one or more accesses");
 
   auto v = vectorMapsFromUnionMap(accesses);
-  for (auto& m: v) {  
+  for (auto& m : v) {
     auto nameId = getName(m);
     if ((m.dim(isl::dim::in) < 1) || (m.dim(isl::dim::out) < 1))
       continue;
-    m = m.project_out(isl::dim::in, 0, 1)
-         .project_out(isl::dim::out, 0, 1);
-    m = m.set_tuple_id(isl::dim::out, isl::id::alloc(m.get_ctx(), nameId, nullptr));
+    m = m.project_out(isl::dim::in, 0, 1).project_out(isl::dim::out, 0, 1);
+    m = m.set_tuple_id(
+        isl::dim::out, isl::id::alloc(m.get_ctx(), nameId, nullptr));
   }
 
   isl::union_map res = isl::union_map(v[0]);
-  for (size_t i = 1; i < v.size(); i++) 
-    res = res.unite(v[i]);  
-  
+  for (size_t i = 1; i < v.size(); i++)
+    res = res.unite(v[i]);
+
   return res;
 }
 
 int extractBatchDim(isl::map access) {
-
   isl::set range = access.range();
   auto dimsInfo = extractDimInfoFromRange(range);
   assert(dimsInfo.size() != 0 && "expect non empty");
 
   return dimsInfo[0].ub - dimsInfo[0].lb;
-} 
-  
+}
 
 // check access pattern for initialization statement in batched GEMM
 // We expect C(batchCount,i,j) = 0.0f
 //
-static bool hasBatchedGemmInitPatternImpl(const MappedScop& scop,
-  isl::schedule_node leaf, BatchedMatMulInfo& bmmi) { 
+static bool hasBatchedGemmInitPatternImpl(
+    const MappedScop& scop,
+    isl::schedule_node leaf,
+    BatchedMatMulInfo& bmmi) {
   std::cout << __func__ << std::endl;
   auto schedule = leaf.get_prefix_schedule_union_map();
   if (!scheduleDimensionality(schedule, 3))
@@ -1516,10 +1500,10 @@ static bool hasBatchedGemmInitPatternImpl(const MappedScop& scop,
   auto readsAndWrites = getUnScheduledReadsAndWritesForNode(scop, leaf);
   auto reads = readsAndWrites.first;
   auto writes = readsAndWrites.second;
-  
-  if ((reads.n_map() != 0) || (writes.n_map() != 1)) 
+
+  if ((reads.n_map() != 0) || (writes.n_map() != 1))
     return false;
-  
+
   int batch = extractBatchDim(isl::map::from(writes));
   writes = dropBatchedDimOnAccesses(writes);
 
@@ -1536,11 +1520,9 @@ static bool hasBatchedGemmInitPatternImpl(const MappedScop& scop,
 
   if (!operation)
     return false;
-  
+
   bmmi.writeToC = getArrayNameAndExtensionFromMap(
-       writes,
-       std::get<1>(matches),
-       std::get<2>(matches)); 
+      writes, std::get<1>(matches), std::get<2>(matches));
   bmmi.i = std::get<1>(matches);
   bmmi.i = std::get<2>(matches);
   bmmi.batch = batch;
@@ -1558,13 +1540,15 @@ static bool checkOnBatchDim(isl::map write, isl::union_map reads, int batch) {
   return (batchDim == batch);
 }
 
-static bool hasBatchedGemmCorePatternImpl(const MappedScop& scop,
-  isl::schedule_node leaf, BatchedMatMulInfo& bmmi) {
+static bool hasBatchedGemmCorePatternImpl(
+    const MappedScop& scop,
+    isl::schedule_node leaf,
+    BatchedMatMulInfo& bmmi) {
   std::cout << __func__ << std::endl;
   auto schedule = leaf.get_prefix_schedule_union_map();
   if (!scheduleDimensionality(schedule, 4))
     return false;
-  
+
   auto readsAndWrites = getUnScheduledReadsAndWritesForNode(scop, leaf);
   auto reads = readsAndWrites.first;
   auto writes = readsAndWrites.second;
@@ -1577,7 +1561,7 @@ static bool hasBatchedGemmCorePatternImpl(const MappedScop& scop,
 
   writes = dropBatchedDimOnAccesses(writes);
   reads = dropBatchedDimOnAccesses(reads);
- 
+
   auto matches = isGemmCorePattern(leaf.get_ctx(), reads, writes);
   if (!std::get<0>(matches))
     return false;
@@ -1586,18 +1570,16 @@ static bool hasBatchedGemmCorePatternImpl(const MappedScop& scop,
   auto kPos = std::get<3>(matches);
   auto type = std::get<4>(matches);
 
-  auto _C_write = getArrayNameAndExtensionFromMap(
-    writes, iPos, jPos);
-  auto _C_read = getArrayNameAndExtensionFromMap(
-    reads, iPos, jPos);
-  
+  auto _C_write = getArrayNameAndExtensionFromMap(writes, iPos, jPos);
+  auto _C_read = getArrayNameAndExtensionFromMap(reads, iPos, jPos);
+
   if (_C_write != _C_read)
     return false;
 
   bool operation = false;
   try {
     operation = checkOperationsInGemmCore(scop, leaf);
-  } catch (...) { 
+  } catch (...) {
     return false;
   }
 
@@ -1605,17 +1587,15 @@ static bool hasBatchedGemmCorePatternImpl(const MappedScop& scop,
     return false;
 
   bmmi.isAtranspose = false;
-  bmmi.isBtranspose = (type == GemmType::isNN) ? false : true;  
+  bmmi.isBtranspose = (type == GemmType::isNN) ? false : true;
   bmmi.readFromC = _C_read;
-  bmmi.readFromA = getArrayNameAndExtensionFromMap(
-      reads, iPos, kPos);
-  bmmi.readFromB = getArrayNameAndExtensionFromMap(
-      reads, kPos, jPos);
+  bmmi.readFromA = getArrayNameAndExtensionFromMap(reads, iPos, kPos);
+  bmmi.readFromB = getArrayNameAndExtensionFromMap(reads, kPos, jPos);
   return true;
 }
 
 // debug function
-//static isl::schedule_node printStatementsAndNodes(
+// static isl::schedule_node printStatementsAndNodes(
 //  const MappedScop& scop, isl::schedule_node node) {
 //  if (node.isa<isl::schedule_node_leaf>()) {
 //    std::cout << "NODE: " << node.to_str() << "\n";
@@ -1634,17 +1614,15 @@ static bool hasBatchedGemmCorePatternImpl(const MappedScop& scop,
 // @param pattern: Pattern to look-up in the subtree.
 // @param replacement: Replacement to be applied in case
 // of a match with @p pattern.
-static isl::schedule_node
-replaceRepeatedly(isl::schedule_node node,
-                   const matchers::ScheduleNodeMatcher &pattern,
-                   const builders::ScheduleNodeBuilder &replacement) {
-
+static isl::schedule_node replaceRepeatedly(
+    isl::schedule_node node,
+    const matchers::ScheduleNodeMatcher& pattern,
+    const builders::ScheduleNodeBuilder& replacement) {
   while (matchers::ScheduleNodeMatcher::isMatching(pattern, node)) {
     node = rebuild(node, replacement);
   }
   return node;
 }
-
 
 // walk the schedule tree starting from "node" and in
 // case of a match with the matcher "pattern" modify
@@ -1655,9 +1633,9 @@ replaceRepeatedly(isl::schedule_node node,
 // @param replacement: Replacement to be applied in case of
 // a match with @p pattern.
 static isl::schedule_node replaceDFSPreorderRepeatedly(
-    isl::schedule_node node, const matchers::ScheduleNodeMatcher &pattern,
-    const builders::ScheduleNodeBuilder &replacement) {
-
+    isl::schedule_node node,
+    const matchers::ScheduleNodeMatcher& pattern,
+    const builders::ScheduleNodeBuilder& replacement) {
   node = replaceRepeatedly(node, pattern, replacement);
   for (int i = 0; i < node.n_children(); i++) {
     node = replaceDFSPreorderRepeatedly(node.child(i), pattern, replacement)
@@ -1680,7 +1658,6 @@ static isl::schedule_node replaceDFSPreorderRepeatedly(
 //
 // @param schedule_node: Current schedule node to be simplified.
 isl::schedule_node squeezeTree(isl::schedule_node root) {
-
   isl::schedule_node parent, child, grandchild;
   auto matcher = [&]() {
     using namespace matchers;
@@ -1712,26 +1689,26 @@ isl::schedule_node squeezeTree(isl::schedule_node root) {
 
 static std::vector<std::string> getStatementNames(std::vector<isl::map> maps) {
   std::vector<std::string> res{};
-  for(const auto& m : maps) {
+  for (const auto& m : maps) {
     isl::set dom = m.domain();
-    assert(dom.has_tuple_name() && "expect tuple name");  
+    assert(dom.has_tuple_name() && "expect tuple name");
     res.push_back(dom.get_tuple_name());
   }
   return res;
 }
 
-static isl::schedule_node updateMark(isl::schedule_node nodeCpp, isl::id id, std::string idStr) {
-  
+static isl::schedule_node
+updateMark(isl::schedule_node nodeCpp, isl::id id, std::string idStr) {
   idStr = idStr.substr(0, idStr.find("@"));
   std::string substring = "_is_dominated";
   std::string::size_type i = idStr.find("_is_dominated");
   idStr.erase(i, substring.length());
 
   nodeCpp = nodeCpp.insert_mark(
-        isl::id::alloc(nodeCpp.get_ctx(), idStr, id.get_user()));
+      isl::id::alloc(nodeCpp.get_ctx(), idStr, id.get_user()));
 
   nodeCpp = nodeCpp.child(0).child(0);
-      nodeCpp = nodeCpp.del();
+  nodeCpp = nodeCpp.del();
   return nodeCpp;
 }
 
@@ -1744,34 +1721,12 @@ static std::vector<isl::set> vectorSetFromUnionSet(isl::union_set uset) {
   return res;
 }
 
-/*
-static isl::schedule_node applyDistribution(isl::schedule_node node, isl::union_set f) {
-  std::stack<isl::schedule_node> nodeStack;
-  nodeStack.push(node);
-  
-  while (nodeStack.empty() == false) {
-    node = nodeStack.top();
-    nodeStack.pop();
-    
-    if (node.isa<isl::schedule_node_band>()) {
-      std::cout << "++++++\n";
-      std::cout << node.to_str() << "\n";
-      std::cout << "++++++\n";
-    }
-
-    if (node.has_parent())
-      nodeStack.push(node.parent());
-  }
-  return node;
-}
-*/
-
 static bool isBijective(isl::union_map umap) {
   auto maps = vectorMapsFromUnionMap(umap);
   if (maps.size() == 0)
     return false;
   bool areBijective = true;
-  for(const auto& m : maps)
+  for (const auto& m : maps)
     if (m.is_bijective() == false)
       areBijective = false;
   return areBijective;
@@ -1780,8 +1735,8 @@ static bool isBijective(isl::union_map umap) {
 // Given two string S_XYX and S_XXYYZZ
 // return true if XYZ < XXYYZZ
 static bool isLexBefore(std::string a, std::string b) {
-  int aPos = std::stoi(a.substr(a.find("_")+1, a.size()));
-  int bPos = std::stoi(b.substr(b.find("_")+1, b.size()));
+  int aPos = std::stoi(a.substr(a.find("_") + 1, a.size()));
+  int bPos = std::stoi(b.substr(b.find("_") + 1, b.size()));
   return aPos < bPos;
 }
 
@@ -1793,11 +1748,14 @@ static bool isBefore(isl::set f, isl::set g) {
   std::string idF = f.get_tuple_id().to_str();
   if (isLexBefore(idF, idG))
     return true;
-  else return false;
+  else
+    return false;
 }
 
 // return the set of statements among "superSet" executed before "set"
-static isl::union_set previousFilters(isl::union_set superSet, isl::union_set set) {
+static isl::union_set previousFilters(
+    isl::union_set superSet,
+    isl::union_set set) {
   isl::union_set res = isl::union_set::empty(superSet.get_space());
   auto vSuperSet = vectorSetFromUnionSet(superSet);
   auto vSet = vectorSetFromUnionSet(set);
@@ -1805,14 +1763,15 @@ static isl::union_set previousFilters(isl::union_set superSet, isl::union_set se
     for (const auto& s : vSet) {
       if (isBefore(ss, s))
         res = res.unite(isl::union_set(ss));
-    } 
+    }
   return res;
 }
 
 // check if there are some statements that need to be executed before f.
 // and preserve the ordering if this is the case.
-static isl::schedule_node preserveStmtOrdering(isl::schedule_node node, isl::union_set f) {
-  
+static isl::schedule_node preserveStmtOrdering(
+    isl::schedule_node node,
+    isl::union_set f) {
   isl::union_set domFil = node.parent().filter_get_filter();
   domFil = domFil.subtract(f);
   isl::union_set prevFil = previousFilters(domFil, f);
@@ -1824,28 +1783,27 @@ static isl::schedule_node preserveStmtOrdering(isl::schedule_node node, isl::uni
 // band node which contains all the dimensions for the statements
 // indentified by "f". To identify such band we restrict the schedule
 // to "f" and check if the schedule is bijective.
-//The founded band node is the point where 
+// The founded band node is the point where
 // we want to apply loop distribution to isolate the BLAS call.
 // TODO: we assume always order the BLAS before the statements
 // executed in the same subtree. It may not be always correct.
-static isl::schedule_node handleDistribution(isl::schedule_node root,
+static isl::schedule_node handleDistribution(
+    isl::schedule_node root,
     isl::union_set f) {
-
   auto handleDistributionImpl = [&](isl::schedule_node node) {
     if (node.isa<isl::schedule_node_band>()) {
-      isl::union_map schedule =
-        node.get_subtree_schedule_union_map();
+      isl::union_map schedule = node.get_subtree_schedule_union_map();
       isl::union_map umap = schedule.intersect_domain(f);
-    
-      if (isBijective(umap)) { 
-        if ((node.has_parent()) 
-            && (node.parent().isa<isl::schedule_node_filter>()))
+
+      if (isBijective(umap)) {
+        if ((node.has_parent()) &&
+            (node.parent().isa<isl::schedule_node_filter>()))
           node = preserveStmtOrdering(node, f);
-    
+
         node = node.order_before(f);
-      } 
+      }
     }
-    return node; 
+    return node;
   };
   root = root.map_descendant_bottom_up(handleDistributionImpl);
   return root;
@@ -1854,22 +1812,21 @@ static isl::schedule_node handleDistribution(isl::schedule_node root,
 // Once we distributed the loops we update the mark nodes.
 // to generate blas calls.
 static isl::schedule_node updateMark(isl::schedule_node root) {
-
   auto updateMarkImpl = [](isl::schedule_node node) {
     if (node.isa<isl::schedule_node_mark>()) {
       std::string substring = "_is_dominated";
       std::string idStr = node.mark_get_id().to_str();
       isl::id id = node.mark_get_id();
       idStr = idStr.substr(0, idStr.find("@"));
-      if (idStr.find(substring) != std::string::npos) { 
+      if (idStr.find(substring) != std::string::npos) {
         std::string::size_type index = idStr.find(substring);
         idStr.erase(index, substring.length());
         node = node.del();
-        while ((node.has_parent()) 
-               && (node.parent().isa<isl::schedule_node_band>()))
+        while ((node.has_parent()) &&
+               (node.parent().isa<isl::schedule_node_band>()))
           node = node.parent();
         node = node.insert_mark(
-          isl::id::alloc(node.get_ctx(), idStr, id.get_user()));
+            isl::id::alloc(node.get_ctx(), idStr, id.get_user()));
       }
     }
     return node;
@@ -1879,13 +1836,12 @@ static isl::schedule_node updateMark(isl::schedule_node root) {
 }
 
 // entry point for loop distributions.
-// 
+//
 // 1. Identify the dominated filter node which require loop distribution.
 // 2. Perform loop distribution. Moving the BLAS call always before
 // statements that belong to the same subtree.
 // 3. Update mark node to generate BLAS calls.
 static isl::schedule_node distributeLoops(isl::schedule_node root) {
-
   std::vector<isl::union_set> targetFilter{};
   auto distributeLoopsImpl = [&](isl::schedule_node node) {
     if (node.isa<isl::schedule_node_mark>()) {
@@ -1914,13 +1870,14 @@ static isl::schedule_node distributeLoops(isl::schedule_node root) {
 
 // Is the matcher's band not dominated by an ancestor band
 // which contains a superset of the matcher's band?
-static bool isNotDominatedImpl(const MappedScop& scop,
+static bool isNotDominatedImpl(
+    const MappedScop& scop,
     isl::schedule_node band) {
   if (!band.has_parent())
     return true;
 
   isl::schedule_node maybeFilter = band.parent();
-  if (!maybeFilter.isa<isl::schedule_node_filter>()) 
+  if (!maybeFilter.isa<isl::schedule_node_filter>())
     return true;
 
   isl::schedule_node filter = maybeFilter;
@@ -1929,15 +1886,14 @@ static bool isNotDominatedImpl(const MappedScop& scop,
     return true;
 
   isl::schedule_node maybeBand = sequence.parent();
-  if(!maybeBand.isa<isl::schedule_node_band>())
+  if (!maybeBand.isa<isl::schedule_node_band>())
     return true;
-  
-  isl::schedule_node dominatorBand = maybeBand;
-  isl::union_map dominatorBandPrefix = 
-    dominatorBand.get_prefix_schedule_union_map();
 
-  isl::union_map bandPrefix =
-    band.get_prefix_schedule_union_map();
+  isl::schedule_node dominatorBand = maybeBand;
+  isl::union_map dominatorBandPrefix =
+      dominatorBand.get_prefix_schedule_union_map();
+
+  isl::union_map bandPrefix = band.get_prefix_schedule_union_map();
 
   if (bandPrefix.domain().is_subset(dominatorBandPrefix.domain())) {
     return false;
@@ -1948,21 +1904,21 @@ static bool isNotDominatedImpl(const MappedScop& scop,
 static std::pair<isl::multi_union_pw_aff, isl::multi_union_pw_aff> tileNode(
     isl::schedule_node node) {
   isl::schedule_node_band band = node.as<isl::schedule_node_band>();
-  
+
   isl::space space = band.get_space();
   auto dims = space.dim(isl::dim::set);
   auto sizes = isl::multi_val::zero(space);
-  
+
   for (unsigned i = 0; i < dims; i++)
     sizes = sizes.set_val(i, isl::val(band.get_ctx(), TILE_FACTOR_CIM_DEVICE));
   band = band.tile(sizes);
   auto tileSchedule = band.get_partial_schedule();
   auto pointSchedule = band.child(0).band_get_partial_schedule();
   return std::make_pair(tileSchedule, pointSchedule);
-} 
-  
+}
 
-static isl::id getMarker(isl::ctx ctx, const std::string &label, const BlasInfo &bi) {
+static isl::id
+getMarker(isl::ctx ctx, const std::string& label, const BlasInfo& bi) {
   if (label == "__tactics_mvt")
     return isl::id::alloc(ctx, label, new GemvInfo{bi.mvi});
   else if (label == "__tactics_gemm")
@@ -1972,13 +1928,12 @@ static isl::id getMarker(isl::ctx ctx, const std::string &label, const BlasInfo 
   else if (label == "__tactics_gemm_is_dominated")
     return isl::id::alloc(ctx, label, new MatMulInfo{bi.mmi});
   else {
-      std::cout << label << std::endl; 
-      assert(0 && "case not defined");
+    std::cout << label << std::endl;
+    assert(0 && "case not defined");
   }
   return isl::id::alloc(ctx, "__tactics_undefined", nullptr);
 }
 
-  
 // entry point for GEMV/GEMM/batched GEMM detection.
 
 // The shape of the calculation for the supported matrix-vector
@@ -2055,10 +2010,10 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
 
   auto isNotDominated = [&](isl::schedule_node band) {
     bool res = isNotDominatedImpl(scop, band);
-    if (!res) 
+    if (!res)
       labelNode = "_is_dominated";
-    else 
-      labelNode = ""; 
+    else
+      labelNode = "";
     return true;
   };
 
@@ -2093,7 +2048,7 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
       return descr;
     };
     auto dummyScheduler = [&]() {
-      auto descr = BandDescriptor(scheduleBody);  
+      auto descr = BandDescriptor(scheduleBody);
       return descr;
     };
     auto marker = [&]() {
@@ -2102,23 +2057,23 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
     auto getfilterInitialization = [&]() {
       return filterInit.filter_get_filter();
     };
-    auto getfilterCore = [&]() {
-      return filterCore.filter_get_filter();
-    };
-    //builder = band(tileScheduler,
+    auto getfilterCore = [&]() { return filterCore.filter_get_filter(); };
+    // builder = band(tileScheduler,
     //            mark(marker,
     //              band(pointScheduler,
     //                sequence(
     //                  filter(getfilterInitialization),
     //                  filter(getfilterCore)))));
+    // clang-format off
     builder = mark(marker,
                 band(dummyScheduler,
                   sequence(
                     filter(getfilterInitialization),
                     filter(getfilterCore))));
+    // clang-format on
   }
-                
-  if(!FLAGS_disable_tactics) {
+
+  if (!FLAGS_disable_tactics) {
     root = rebuildOnMatch(root, matcher, builder).root();
     root = distributeLoops(root).root();
   }

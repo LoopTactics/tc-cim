@@ -161,7 +161,7 @@ vector<pair<string, string>> emitParams(const Scop& scop) {
 pair<string, string> emitTypedTensorName(
     Halide::OutputImageParam t,
     bool constInput = false,
-    std::string (name_fun)(std::string) = makePointerName) {
+    std::string(name_fun)(std::string) = makePointerName) {
   stringstream sstype;
   sstype << (constInput ? "const " : "") << halideTypeString(t.type()) << "*";
 
@@ -172,7 +172,7 @@ pair<string, string> emitTypedTensorName(
 
 vector<pair<string, string>> emitTypedTensorNames(
     const vector<Halide::OutputImageParam>& tensors,
-    std::string (name_fun)(std::string) = makePointerName) {
+    std::string(name_fun)(std::string) = makePointerName) {
   vector<pair<string, string>> res;
   res.reserve(tensors.size());
   for (auto t : tensors) {
@@ -183,7 +183,7 @@ vector<pair<string, string>> emitTypedTensorNames(
 
 vector<pair<string, string>> emitTypedTensorNames(
     const vector<Halide::ImageParam>& tensors,
-    std::string (name_fun)(std::string) = makePointerName) {
+    std::string(name_fun)(std::string) = makePointerName) {
   vector<pair<string, string>> res;
   res.reserve(tensors.size());
   for (auto t : tensors) {
@@ -498,27 +498,18 @@ void AstPrinter::emitMatmulMark(isl::ast_node_mark mark) {
 
   WS ws;
 
-  int m = 
-    payload->readFromA.dims[0].ub - payload->readFromA.dims[0].lb;
-  int n =
-    payload->readFromB.dims[1].ub - payload->readFromB.dims[1].lb;
-  int k =
-    payload->readFromA.dims[1].ub - payload->readFromA.dims[1].lb;
+  int m = payload->readFromA.dims[0].ub - payload->readFromA.dims[0].lb;
+  int n = payload->readFromB.dims[1].ub - payload->readFromB.dims[1].lb;
+  int k = payload->readFromA.dims[1].ub - payload->readFromA.dims[1].lb;
   int lda = (payload->isAtranspose) ? std::max(1, m) : std::max(1, k);
   int ldb = (payload->isBtranspose) ? std::max(1, k) : std::max(1, n);
   int ldc = std::max(1, m);
 
-  context_.ss << ws.tab() << "cimblas_gemm("
-              << payload->isAtranspose << ", "
-              << payload->isBtranspose << ", " 
-              << m << ", " << n << ", " << k << ", "
-              << payload->alpha << ", "
-              << payload->readFromA.name << ", "
-              << lda << ", "
-              << payload->readFromB.name << ", " 
-              << ldb << ", "
-              << payload->beta << ", " 
-              << payload->writeToC.name << ", "  
+  context_.ss << ws.tab() << "cimblas_gemm(" << payload->isAtranspose << ", "
+              << payload->isBtranspose << ", " << m << ", " << n << ", " << k
+              << ", " << payload->alpha << ", " << payload->readFromA.name
+              << ", " << lda << ", " << payload->readFromB.name << ", " << ldb
+              << ", " << payload->beta << ", " << payload->writeToC.name << ", "
               << ldc << ");" << std::endl;
 
   delete payload;
@@ -548,16 +539,11 @@ void AstPrinter::emitGemvMark(isl::ast_node_mark mark) {
   int n = payload->readFromA.dims[1].ub - payload->readFromA.dims[0].lb;
   int lda = std::max(1, n);
 
-  context_.ss << ws.tab() << "cimblas_gemv(" 
-              << payload->isAtranspose << ", "
-              << m << ", " << n << ", "
-              << payload->alpha << ", "
-              << payload->readFromA.name << ", "
-              << lda << ", "
-              << payload->readFromX.name << ", "
-              << payload->incx << ", "
-              << payload->beta << ", "
-              << payload->writeToY.name << ", "
+  context_.ss << ws.tab() << "cimblas_gemv(" << payload->isAtranspose << ", "
+              << m << ", " << n << ", " << payload->alpha << ", "
+              << payload->readFromA.name << ", " << lda << ", "
+              << payload->readFromX.name << ", " << payload->incx << ", "
+              << payload->beta << ", " << payload->writeToY.name << ", "
               << payload->incy << ");" << std::endl;
 
   delete payload;
@@ -586,29 +572,21 @@ void AstPrinter::emitBatchedMatmulMark(isl::ast_node_mark mark) {
 
   WS ws;
 
- int m = 
-    payload->readFromA.dims[0].ub - payload->readFromA.dims[0].lb;
-  int n =
-    payload->readFromB.dims[1].ub - payload->readFromB.dims[1].lb;
-  int k =
-    payload->readFromA.dims[1].ub - payload->readFromA.dims[1].lb;
+  int m = payload->readFromA.dims[0].ub - payload->readFromA.dims[0].lb;
+  int n = payload->readFromB.dims[1].ub - payload->readFromB.dims[1].lb;
+  int k = payload->readFromA.dims[1].ub - payload->readFromA.dims[1].lb;
   int lda = (payload->isAtranspose) ? std::max(1, m) : std::max(1, k);
   int ldb = (payload->isBtranspose) ? std::max(1, k) : std::max(1, n);
   int ldc = std::max(1, m);
 
-  context_.ss << ws.tab() << "cimblas_batched_gemm(" 
-              << payload->batch << ", " 
-              << payload->isAtranspose << ", "
-              << payload->isBtranspose << ", " 
-              << m << ", " << n << ", " << k << ", " 
-              << payload->alpha << ", " 
+  context_.ss << ws.tab() << "cimblas_batched_gemm(" << payload->batch << ", "
+              << payload->isAtranspose << ", " << payload->isBtranspose << ", "
+              << m << ", " << n << ", " << k << ", " << payload->alpha << ", "
               << payload->readFromA.name << ", " << lda << ", "
-              << payload->readFromB.name << ", " << ldb << ", "
-              << payload->beta << ", "
-              << payload->writeToC.name << ", " << ldc 
-              << ");"
+              << payload->readFromB.name << ", " << ldb << ", " << payload->beta
+              << ", " << payload->writeToC.name << ", " << ldc << ");"
               << std::endl;
-  delete payload; 
+  delete payload;
 }
 
 void AstPrinter::emitMark(isl::ast_node_mark mark) {
@@ -619,14 +597,11 @@ void AstPrinter::emitMark(isl::ast_node_mark mark) {
 
   if (markType == "__tactics_gemm") {
     emitMatmulMark(mark);
-  } 
-  else if (markType == "__tactics_mvt") {
+  } else if (markType == "__tactics_mvt") {
     emitGemvMark(mark);
-  }
-  else if (markType == "__tactics_batched_gemm") {
+  } else if (markType == "__tactics_batched_gemm") {
     emitBatchedMatmulMark(mark);
-  } 
-  else {
+  } else {
     LOG(FATAL) << "Unsupported mark type: " << markType;
   }
 }
@@ -960,16 +935,16 @@ string emitTacticsKernel(
   return ss.str();
 }
 
-string emitTacticsMain(const std::string& specializedName,
-		       const MappedScop& mscop)
-{
+string emitTacticsMain(
+    const std::string& specializedName,
+    const MappedScop& mscop) {
   const Scop& scop = mscop.scop();
   stringstream ss;
   WS ws;
 
   // Make a map of the specialized scalar parameter values
   map<string, Halide::Expr> paramValues;
-  
+
   for (const auto& kvp : scop.parameterValues)
     paramValues[kvp.first] = kvp.second;
 
@@ -978,42 +953,32 @@ string emitTacticsMain(const std::string& specializedName,
   // Parameters
   auto paramsVec = emitParams(scop);
 
-  for(auto& param: paramsVec) {
-    ss << ws.tab()
-       << "static const "
-       << param.second
-       << " "
-       << param.first
-       << " = "
-       << paramValues[param.first]
-       << ";"
-       << std::endl;
+  for (auto& param : paramsVec) {
+    ss << ws.tab() << "static const " << param.second << " " << param.first
+       << " = " << paramValues[param.first] << ";" << std::endl;
   }
 
   ss << std::endl;
-  
+
   // Declarations
   auto emitDecl = [&](const Halide::OutputImageParam& p) {
-		    ss << ws.tab()
-		       << "static "
-		       << halideTypeString(p.type())
-		       << " "
-		       << p.name();
+    ss << ws.tab() << "static " << halideTypeString(p.type()) << " "
+       << p.name();
 
-		    for (int i = 0; i < p.dimensions(); ++i) {
-		      Halide::Expr extent = p.parameter().extent_constraint(i);
-		      extent = Halide::Internal::substitute(paramValues, extent);
-		      ss << "[" << extent << "]";
-		    }
+    for (int i = 0; i < p.dimensions(); ++i) {
+      Halide::Expr extent = p.parameter().extent_constraint(i);
+      extent = Halide::Internal::substitute(paramValues, extent);
+      ss << "[" << extent << "]";
+    }
 
-		    ss << ";" << std::endl;
-		  };		     
-  
+    ss << ";" << std::endl;
+  };
+
   for (auto& o : scop.halide.outputs)
     emitDecl(o);
 
   ss << std::endl;
-  
+
   for (auto& i : scop.halide.inputs)
     emitDecl(i);
 
@@ -1021,46 +986,35 @@ string emitTacticsMain(const std::string& specializedName,
 
   // Initializations
   auto emitInit = [&](const Halide::ImageParam& p) {
-		    stringstream ssHead;
-		    stringstream ssStmt;
-		    stringstream tabs;
-		    stringstream ssRandExpr;
+    stringstream ssHead;
+    stringstream ssStmt;
+    stringstream tabs;
+    stringstream ssRandExpr;
 
-		    ssStmt << p.name();
+    ssStmt << p.name();
 
-		    for (int i = 0; i < p.dimensions(); ++i) {
-		      std::string iterName = "i" + std::to_string(i);
-		      tabs << ws.tab();
-			
-		      Halide::Expr extent = p.parameter().extent_constraint(i);
+    for (int i = 0; i < p.dimensions(); ++i) {
+      std::string iterName = "i" + std::to_string(i);
+      tabs << ws.tab();
 
-		      ssHead << tabs.str()
-			     << "for(size_t "
-			     << iterName
-			     << " = 0; "
-			     << iterName
-			     << " < "
-			     << extent
-			     << "; "
-			     << iterName
-			     << "++)"
-			     << std::endl;
+      Halide::Expr extent = p.parameter().extent_constraint(i);
 
-		      ssStmt << "[" << iterName << "]";
-		      ssRandExpr << iterName;
+      ssHead << tabs.str() << "for(size_t " << iterName << " = 0; " << iterName
+             << " < " << extent << "; " << iterName << "++)" << std::endl;
 
-		      if(i != p.dimensions()-1)
-			ssRandExpr << "+";
-		    }
+      ssStmt << "[" << iterName << "]";
+      ssRandExpr << iterName;
 
-		    ssStmt << " = " << ssRandExpr.str() << ";" << std::endl;
+      if (i != p.dimensions() - 1)
+        ssRandExpr << "+";
+    }
 
-		    tabs << ws.tab();
+    ssStmt << " = " << ssRandExpr.str() << ";" << std::endl;
 
-		    ss << ssHead.str()
-		       << tabs.str()
-		       << ssStmt.str();
-		  };
+    tabs << ws.tab();
+
+    ss << ssHead.str() << tabs.str() << ssStmt.str();
+  };
 
   for (auto& i : scop.halide.inputs) {
     emitInit(i);
@@ -1072,9 +1026,9 @@ string emitTacticsMain(const std::string& specializedName,
   ss << "  " << specializedName << "(";
 
   auto sigVec = paramsVec +
-    emitTypedTensorNames(scop.halide.outputs, makeName) +
-    emitTypedTensorNames(scop.halide.inputs, makeName);
- 
+      emitTypedTensorNames(scop.halide.outputs, makeName) +
+      emitTypedTensorNames(scop.halide.inputs, makeName);
+
   for (auto& s : sigVec) {
     string& sname = s.first;
 
@@ -1088,62 +1042,43 @@ string emitTacticsMain(const std::string& specializedName,
   ss << ");" << std::endl;
 
   // Use the results
-  ss << std::endl
-     << ws.tab()
-     << "float v = 0;"
-     << std::endl;
+  ss << std::endl << ws.tab() << "float v = 0;" << std::endl;
 
   auto emitUse = [&](const Halide::OutputImageParam& p) {
-		   stringstream ssHead;
-		   stringstream ssStmt;
-		   stringstream tabs;
+    stringstream ssHead;
+    stringstream ssStmt;
+    stringstream tabs;
 
-		   ssStmt << "v += " << p.name();
+    ssStmt << "v += " << p.name();
 
-		   for (int i = 0; i < p.dimensions(); ++i) {
-		     std::string iterName = "i" + std::to_string(i);
-		     tabs << ws.tab();
-			
-		     Halide::Expr extent = p.parameter().extent_constraint(i);
+    for (int i = 0; i < p.dimensions(); ++i) {
+      std::string iterName = "i" + std::to_string(i);
+      tabs << ws.tab();
 
-		     ssHead << tabs.str()
-			    << "for(size_t "
-			    << iterName
-			    << " = 0; "
-			    << iterName
-			    << " < "
-			    << extent
-			    << "; "
-			    << iterName
-			    << "++)"
-			    << std::endl;
+      Halide::Expr extent = p.parameter().extent_constraint(i);
 
-		     ssStmt << "[" << iterName << "]";
-		   }
+      ssHead << tabs.str() << "for(size_t " << iterName << " = 0; " << iterName
+             << " < " << extent << "; " << iterName << "++)" << std::endl;
 
-		   ssStmt << ";" << std::endl;
+      ssStmt << "[" << iterName << "]";
+    }
 
-		   tabs << ws.tab();
+    ssStmt << ";" << std::endl;
 
-		   ss << ssHead.str()
-		      << tabs.str()
-		      << ssStmt.str();
-		 };
+    tabs << ws.tab();
+
+    ss << ssHead.str() << tabs.str() << ssStmt.str();
+  };
 
   for (auto& o : scop.halide.outputs) {
     emitUse(o);
     ss << std::endl;
   }
 
-  ss << ws.tab()
-     << "printf(\"Sum of all output elements: %f\\n\", v);"
+  ss << ws.tab() << "printf(\"Sum of all output elements: %f\\n\", v);"
      << std::endl;
 
-
-  ss << std::endl
-     << ws.tab()
-     << "return 0;"
-     << std::endl;
+  ss << std::endl << ws.tab() << "return 0;" << std::endl;
 
   ss << "}" << std::endl;
 
