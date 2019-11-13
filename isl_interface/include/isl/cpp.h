@@ -1844,6 +1844,7 @@ public:
   inline map project_out(isl::dim type, unsigned int f, unsigned int s) const;
   inline map equate(isl::dim type1, int pos1, isl::dim type2, int pos2) const;
   inline map order_lt(isl::dim type1, int pos1, isl::dim type2, int pos2) const;
+  inline id get_dim_id(isl::dim type, unsigned int pos) const;
   typedef isl_map* isl_ptr_t;
 };
 
@@ -8975,6 +8976,12 @@ local_space local_space::wrap() const
 }
 
 // implementations for isl::map
+
+id map::get_dim_id(isl::dim type, unsigned int pos) const
+{
+  auto res = isl_map_get_dim_id(get(), static_cast<enum isl_dim_type>(type), pos);
+  return manage(res);
+}
 
 map map::order_lt(isl::dim type1, int pos1, isl::dim type2, int pos2) const
 {
