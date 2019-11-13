@@ -1766,11 +1766,68 @@ static isl::schedule_node applyDistribution(isl::schedule_node node, isl::union_
 }
 */
 
-//static bool hasAllDims(isl::map map) {
+static bool isBijective(isl::union_map umap) {
+  auto maps = vectorMapsFromUnionMap(umap);
+  if (maps.size() == 0)
+    return false;
+  bool areBijective = true;
+  for(const auto& m : maps)
+    if (m.is_bijective() == false)
+      areBijective = false;
+  return areBijective;
+}
 
-//}
+// Given two string S_XYX and S_XXYYZZ
+// return true if XYZ < XXYYZZ
+static bool isLexBefore(std::string a, std::string b) {
+  int aPos = std::stoi(a.substr(a.find("_")+1, a.size()));
+  int bPos = std::stoi(b.substr(b.find("_")+1, b.size()));
+  return aPos < bPos;
+}
 
+// is statement f executed before statement g?
+static bool isBefore(isl::set f, isl::set g) {
+  assert(g.has_tuple_id() && "expect tuple id");
+  assert(f.has_tuple_id() && "expect tuple id");
+  std::string idG = g.get_tuple_id().to_str();
+  std::string idF = f.get_tuple_id().to_str();
+  if (isLexBefore(idF, idG))
+    return true;
+  else return false;
+}
 
+// return the set of statements among "superSet" executed before "set"
+static isl::union_set previousFilters(isl::union_set superSet, isl::union_set set) {
+  isl::union_set res = isl::union_set::empty(superSet.get_space());
+  auto vSuperSet = vectorSetFromUnionSet(superSet);
+  auto vSet = vectorSetFromUnionSet(set);
+  for (const auto& ss : vSuperSet)
+    for (const auto& s : vSet) {
+      if (isBefore(ss, s))
+        res = res.unite(isl::union_set(ss));
+    } 
+  return res;
+}
+
+// check if there are some statements that need to be executed before f.
+// and preserve the ordering if this is the case.
+static isl::schedule_node preserveStmtOrdering(isl::schedule_node node, isl::union_set f) {
+  
+  isl::union_set domFil = node.parent().filter_get_filter();
+  domFil = domFil.subtract(f);
+  isl::union_set prevFil = previousFilters(domFil, f);
+  node = node.order_before(prevFil);
+  return node;
+}
+
+// implement loop distribution. The idea is to find the top-most
+// band node which contains all the dimensions for the statements
+// indentified by "f". To identify such band we restrict the schedule
+// to "f" and check if the schedule is bijective.
+//The founded band node is the point where 
+// we want to apply loop distribution to isolate the BLAS call.
+// TODO: we assume always order the BLAS before the statements
+// executed in the same subtree. It may not be always correct.
 static isl::schedule_node handleDistribution(isl::schedule_node root,
     isl::union_set f) {
 
@@ -1779,16 +1836,14 @@ static isl::schedule_node handleDistribution(isl::schedule_node root,
       isl::union_map schedule =
         node.get_subtree_schedule_union_map();
       isl::union_map umap = schedule.intersect_domain(f);
-      umap = umap.apply_domain(schedule); 
-      isl::union_set uset = umap.domain();
-      auto vset = vectorSetFromUnionSet(uset);
-      for (const auto& s : vset)
-        std::cout << s.params().to_str() << std::endl;
-      //std::cout << umap.coalesce().domain().to_str() << "\n";
-      
-      //if (hasAllDims(umap)) {
-      //  std::cout << schedule.to_str() << "\n";
-      //}
+    
+      if (isBijective(umap)) { 
+        if ((node.has_parent()) 
+            && (node.parent().isa<isl::schedule_node_filter>()))
+          node = preserveStmtOrdering(node, f);
+    
+        node = node.order_before(f);
+      } 
     }
     return node; 
   };
@@ -1796,6 +1851,39 @@ static isl::schedule_node handleDistribution(isl::schedule_node root,
   return root;
 }
 
+// Once we distributed the loops we update the mark nodes.
+// to generate blas calls.
+static isl::schedule_node updateMark(isl::schedule_node root) {
+
+  auto updateMarkImpl = [](isl::schedule_node node) {
+    if (node.isa<isl::schedule_node_mark>()) {
+      std::string substring = "_is_dominated";
+      std::string idStr = node.mark_get_id().to_str();
+      isl::id id = node.mark_get_id();
+      idStr = idStr.substr(0, idStr.find("@"));
+      if (idStr.find(substring) != std::string::npos) { 
+        std::string::size_type index = idStr.find(substring);
+        idStr.erase(index, substring.length());
+        node = node.del();
+        while ((node.has_parent()) 
+               && (node.parent().isa<isl::schedule_node_band>()))
+          node = node.parent();
+        node = node.insert_mark(
+          isl::id::alloc(node.get_ctx(), idStr, id.get_user()));
+      }
+    }
+    return node;
+  };
+
+  return root.map_descendant_bottom_up(updateMarkImpl).root();
+}
+
+// entry point for loop distributions.
+// 
+// 1. Identify the dominated filter node which require loop distribution.
+// 2. Perform loop distribution. Moving the BLAS call always before
+// statements that belong to the same subtree.
+// 3. Update mark node to generate BLAS calls.
 static isl::schedule_node distributeLoops(isl::schedule_node root) {
 
   std::vector<isl::union_set> targetFilter{};
@@ -1815,7 +1903,12 @@ static isl::schedule_node distributeLoops(isl::schedule_node root) {
   };
 
   root = root.map_descendant_bottom_up(distributeLoopsImpl).root();
-  root = handleDistribution(root, targetFilter[0]);
+
+  for (size_t i = 0; i < targetFilter.size(); i++) {
+    root = handleDistribution(root, targetFilter[i]);
+  }
+
+  root = updateMark(root);
   return root.root();
 }
 
@@ -1843,20 +1936,8 @@ static bool isNotDominatedImpl(const MappedScop& scop,
   isl::union_map dominatorBandPrefix = 
     dominatorBand.get_prefix_schedule_union_map();
 
-  //if (!dominatorBand.has_parent())
-  //  return true;
-
-  // unless we are dealing with the context.
-  //isl::schedule_node context = dominatorBand.parent();
-  //if (context.isa<isl::schedule_node_context>())
-  //  return true;
-
   isl::union_map bandPrefix =
     band.get_prefix_schedule_union_map();
-
-  //std::cout << "@@@@@@@@@@@@\n";
-  //std::cout << dominatorBandPrefix.to_str() << "\n";
-  //std::cout << "@@@@@@@@@@@@\n";
 
   if (bandPrefix.domain().is_subset(dominatorBandPrefix.domain())) {
     return false;
@@ -2038,12 +2119,8 @@ isl::schedule detectInSchedule(const MappedScop& scop) {
   }
                 
   if(!FLAGS_disable_tactics) {
-    //root = wrapOnMatch(root, matcher, labelNode, bi).root();
     root = rebuildOnMatch(root, matcher, builder).root();
-    std::cout << root.to_str() << "\n";
     root = distributeLoops(root).root();
-    //root = tileLoops(root);
-    std::cout << root.to_str() << "\n";
   }
 
   return root.get_schedule();
