@@ -62,6 +62,15 @@ DECLARE_bool(tuner_gen_log_generations);
 DECLARE_uint64(tuner_min_launch_total_threads);
 DECLARE_uint32(tuner_save_best_candidates_count);
 
+// Loop Tactics Flags
+DECLARE_bool(generate_tactics_main);
+
+// Disable Loop Tactics
+DECLARE_bool(disable_tactics);
+
+// Disable generation of a Loop Tactics autotuner entry point
+DECLARE_bool(disable_tactics_entrypoint);
+
 // Misc
 DECLARE_int64(random_seed);
 DECLARE_bool(schedule_tree_verbose_validation);

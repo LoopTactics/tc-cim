@@ -1,0 +1,3 @@
+def conv1d(float(M) I, float(N) K) -> (O) {
+  O(i) +=! K(x) * I (i + x)
+}

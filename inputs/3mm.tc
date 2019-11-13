@@ -1,0 +1,6 @@
+def kernel1mm(float(M,N) A, float(N,K) B, float(K,P) C, float(P,Q) D) -> (E, F, O)
+{
+  E(i,k) +=! A(i, n) * B(n, k)
+  F(i,k) +=! C(i, n) * D(n, k)
+  O(i,k) +=! E(i, n) * F(n, k)
+}

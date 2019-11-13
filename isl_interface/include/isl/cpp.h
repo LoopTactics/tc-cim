@@ -48,6 +48,55 @@
 
 namespace isl {
 
+enum class dim {
+  cst = isl_dim_cst,
+  param = isl_dim_param,
+  in = isl_dim_in,
+  out = isl_dim_out,
+  set = isl_dim_set,
+  div = isl_dim_div,
+  all = isl_dim_all
+};
+
+class boolean {
+private:
+  mutable bool checked = false;
+  isl_bool val;
+
+  friend boolean manage(isl_bool val);
+  boolean(isl_bool val): val(val) {}
+public:
+  boolean()
+      : val(isl_bool_error) {}
+  ~boolean() {
+    // ISLPP_ASSERT(checked, "IMPLEMENTATION ERROR: Unchecked state");
+  }
+
+  /* implicit */ boolean(bool val)
+      : val(val ? isl_bool_true : isl_bool_false) {}
+
+  bool is_error() const { checked = true; return val == isl_bool_error; }
+  bool is_false() const { checked = true; return val == isl_bool_false; }
+  bool is_true() const { checked = true; return val == isl_bool_true; }
+
+  operator bool() const {
+    // ISLPP_ASSERT(checked, "IMPLEMENTATION ERROR: Unchecked error state");
+    //ISLPP_ASSERT(!is_error(), "IMPLEMENTATION ERROR: Unhandled error state");
+    return is_true();
+  }
+
+  boolean operator!() const {
+    if (is_error())
+      return *this;
+    return !is_true();
+  }
+};
+
+inline boolean manage(isl_bool val) {
+  return boolean(val);
+}
+
+
 class ctx {
 	isl_ctx *ptr;
 public:
@@ -394,6 +443,7 @@ public:
   inline explicit operator bool() const;
   inline ctx get_ctx() const;
   inline std::string to_str() const;
+  inline aff add_constant_val(val v) const;
 
   inline aff add(aff aff2) const;
   inline aff add_constant(val v) const;
@@ -428,7 +478,9 @@ public:
   inline aff sub(aff aff2) const;
   inline aff unbind_params_insert_domain(multi_id domain) const;
   static inline aff zero_on_domain(space space);
+  static inline aff var_on_domain(local_space ls, isl::dim type, unsigned int pos);
   typedef isl_aff* isl_ptr_t;
+  inline val get_coefficient_val(isl::dim type, int pos) const;
 };
 
 // declarations for isl::aff_list
@@ -1595,8 +1647,10 @@ public:
   inline explicit operator bool() const;
   inline ctx get_ctx() const;
   inline std::string to_str() const;
-
+  
+  static inline id alloc(ctx ctx, const std::string &name, void * user);
   inline std::string get_name() const;
+  inline void* get_user() const;
   typedef isl_id* isl_ptr_t;
 };
 
@@ -1712,6 +1766,7 @@ public:
   inline explicit operator bool() const;
   inline ctx get_ctx() const;
   inline std::string to_str() const;
+  inline map set_tuple_id(isl::dim type, id id) const;
 
   inline basic_map affine_hull() const;
   inline map apply_domain(map map2) const;
@@ -1784,6 +1839,12 @@ public:
   inline basic_map unshifted_simple_hull() const;
   inline set wrap() const;
   inline map zip() const;
+  inline map flat_range_product(map map2) const;
+  inline unsigned int dim(isl::dim type) const;
+  inline map project_out(isl::dim type, unsigned int f, unsigned int s) const;
+  inline map equate(isl::dim type1, int pos1, isl::dim type2, int pos2) const;
+  inline map order_lt(isl::dim type1, int pos1, isl::dim type2, int pos2) const;
+  inline id get_dim_id(isl::dim type, unsigned int pos) const;
   typedef isl_map* isl_ptr_t;
 };
 
@@ -2046,6 +2107,7 @@ public:
   inline std::string to_str() const;
 
   inline multi_union_pw_aff add(multi_union_pw_aff multi2) const;
+  inline unsigned int dim(isl::dim type) const;
   inline multi_union_pw_aff align_params(space model) const;
   inline multi_union_pw_aff apply(multi_aff ma) const;
   inline multi_union_pw_aff apply(pw_multi_aff pma) const;
@@ -2353,6 +2415,7 @@ public:
   inline pw_multi_aff scale_down(val v) const;
   inline pw_multi_aff set_pw_aff(unsigned int pos, pw_aff pa) const;
   inline pw_multi_aff union_add(pw_multi_aff pma2) const;
+  static inline pw_multi_aff from_map(map map);
   typedef isl_pw_multi_aff* isl_ptr_t;
 };
 
@@ -2473,6 +2536,18 @@ public:
   template <class T> inline T as();
   inline ctx get_ctx() const;
   inline std::string to_str() const;
+  inline multi_union_pw_aff band_get_partial_schedule() const;
+  inline boolean band_member_get_coincident(int pos) const;
+  inline schedule_node band_member_set_coincident(int pos, int coincident) const;
+  inline union_set domain_get_domain() const;
+  inline union_pw_multi_aff expansion_get_contraction() const;
+  inline union_map expansion_get_expansion() const;
+  inline union_map extension_get_extension() const;
+  inline union_set filter_get_filter() const;
+  inline set guard_get_guard() const;
+  inline schedule_node band_set_ast_build_options(union_set options) const;
+  inline id mark_get_id() const;
+  inline set context_get_context() const;
 
   inline schedule_node ancestor(int generation) const;
   inline schedule_node child(int pos) const;
@@ -2519,6 +2594,7 @@ public:
   inline schedule_node parent() const;
   inline schedule_node previous_sibling() const;
   inline schedule_node root() const;
+  inline union_map get_subtree_schedule_union_map() const;
   typedef isl_schedule_node* isl_ptr_t;
 };
 
@@ -2937,6 +3013,7 @@ public:
   inline explicit operator bool() const;
   inline ctx get_ctx() const;
   inline std::string to_str() const;
+  inline unsigned int dim(isl::dim type) const;
 
   inline space add_named_tuple_id_ui(id tuple_id, unsigned int dim) const;
   inline space add_param(id id) const;
@@ -2948,6 +3025,7 @@ public:
   inline space domain() const;
   inline space domain_map() const;
   inline space domain_product(space right) const;
+  inline int find_dim_by_name(isl::dim type, const std::string& name) const;
   inline space from_domain() const;
   inline space from_range() const;
   inline id get_map_range_tuple_id() const;
@@ -2970,6 +3048,11 @@ public:
   inline space uncurry() const;
   inline space unwrap() const;
   inline space wrap() const;
+  inline boolean has_tuple_id(isl::dim type) const;
+  inline id get_tuple_id(isl::dim type) const;
+  inline std::string get_tuple_name(isl::dim type) const;
+  inline space add_dims(isl::dim type, unsigned int n) const;
+  inline space set_tuple_name(isl::dim type, const std::string& s) const;
   typedef isl_space* isl_ptr_t;
 };
 
@@ -3095,6 +3178,7 @@ public:
   inline /* implicit */ union_map(const union_map &obj);
   inline /* implicit */ union_map(basic_map bmap);
   inline /* implicit */ union_map(map map);
+  inline explicit union_map(union_pw_multi_aff upma);
   inline explicit union_map(ctx ctx, const std::string &str);
   inline union_map &operator=(union_map obj);
   inline ~union_map();
@@ -3175,6 +3259,8 @@ public:
   inline union_map universe() const;
   inline union_set wrap() const;
   inline union_map zip() const;
+  inline bool is_identity() const;
+  inline union_map project_out(isl::dim type, unsigned int f, unsigned int s) const;
   typedef isl_union_map* isl_ptr_t;
 };
 
@@ -3292,6 +3378,7 @@ public:
   inline /* implicit */ union_pw_multi_aff(pw_multi_aff pma);
   inline explicit union_pw_multi_aff(union_set domain, multi_val mv);
   inline explicit union_pw_multi_aff(ctx ctx, const std::string &str);
+  inline explicit union_pw_multi_aff(union_map umap);
   inline /* implicit */ union_pw_multi_aff(union_pw_aff upa);
   inline union_pw_multi_aff &operator=(union_pw_multi_aff obj);
   inline ~union_pw_multi_aff();
@@ -3504,6 +3591,7 @@ public:
   inline int sgn() const;
   inline val sub(val v2) const;
   inline val trunc() const;
+  inline val mul_ui(unsigned long v) const;
   static inline val zero(ctx ctx);
   typedef isl_val* isl_ptr_t;
 };
@@ -3547,6 +3635,26 @@ public:
 };
 
 // implementations for isl::aff
+
+val aff::get_coefficient_val(isl::dim type, int pos) const
+{
+  auto res = isl_aff_get_coefficient_val(get(), static_cast<enum isl_dim_type>(type), pos);
+  return manage(res);
+}
+
+aff aff::var_on_domain(local_space ls, isl::dim type, unsigned int pos)
+{
+  auto res = isl_aff_var_on_domain(ls.release(), static_cast<enum isl_dim_type>(type), pos);
+  return manage(res);
+}
+
+aff aff::add_constant_val(val v) const
+{
+  auto res = isl_aff_add_constant_val(copy(), v.release());
+  return manage(res);
+}
+
+
 aff manage(__isl_take isl_aff *ptr) {
   if (!ptr)
     exception::throw_invalid("NULL input", __FILE__, __LINE__);
@@ -8312,6 +8420,19 @@ bool fixed_box::is_valid() const
 }
 
 // implementations for isl::id
+
+void * id::get_user() const
+{
+  auto res = isl_id_get_user(get());
+  return res;
+}
+
+id id::alloc(ctx ctx, const std::string &name, void * user)
+{
+  auto res = isl_id_alloc(ctx.release(), name.c_str(), user);
+  return manage(res);
+}
+
 id manage(__isl_take isl_id *ptr) {
   if (!ptr)
     exception::throw_invalid("NULL input", __FILE__, __LINE__);
@@ -8855,6 +8976,38 @@ local_space local_space::wrap() const
 }
 
 // implementations for isl::map
+
+id map::get_dim_id(isl::dim type, unsigned int pos) const
+{
+  auto res = isl_map_get_dim_id(get(), static_cast<enum isl_dim_type>(type), pos);
+  return manage(res);
+}
+
+map map::order_lt(isl::dim type1, int pos1, isl::dim type2, int pos2) const
+{
+  auto res = isl_map_order_lt(copy(), static_cast<enum isl_dim_type>(type1), pos1, static_cast<enum isl_dim_type>(type2), pos2);
+  return manage(res);
+}
+
+map map::equate(isl::dim type1, int pos1, isl::dim type2, int pos2) const
+{
+  auto res = isl_map_equate(copy(), static_cast<enum isl_dim_type>(type1), pos1, static_cast<enum isl_dim_type>(type2), pos2);
+  return manage(res);
+}
+
+map map::set_tuple_id(isl::dim type, id id) const
+{
+  auto res = isl_map_set_tuple_id(copy(), static_cast<enum isl_dim_type>(type), id.release());
+  return manage(res);
+}
+
+map map::project_out(isl::dim type, unsigned int first, unsigned int n) const
+{
+  auto res = isl_map_project_out(copy(), static_cast<enum isl_dim_type>(type), first, n);
+  return manage(res);
+}
+
+
 map manage(__isl_take isl_map *ptr) {
   if (!ptr)
     exception::throw_invalid("NULL input", __FILE__, __LINE__);
@@ -8996,6 +9149,18 @@ std::string map::to_str() const {
 
 ctx map::get_ctx() const {
   return ctx(isl_map_get_ctx(ptr));
+}
+
+map map::flat_range_product(map map2) const 
+{
+  auto res = isl_map_flat_range_product(copy(), map2.release());
+  return manage(res);
+}
+
+unsigned int map::dim(isl::dim type) const
+{
+  auto res = isl_map_dim(get(), static_cast<enum isl_dim_type>(type));
+  return res;
 }
 
 basic_map map::affine_hull() const
@@ -10936,6 +11101,13 @@ multi_pw_aff::multi_pw_aff(space space, pw_aff_list list)
     exception::throw_last_error(ctx);
   ptr = res;
 }
+
+unsigned int multi_union_pw_aff::dim(isl::dim type) const
+{
+  auto res = isl_multi_union_pw_aff_dim(get(), static_cast<enum isl_dim_type>(type));
+  return res;
+}
+
 multi_pw_aff::multi_pw_aff(multi_aff ma)
 {
   if (ma.is_null())
@@ -12822,10 +12994,11 @@ inline std::ostream& operator<<(std::ostream& os, const pw_aff& C) {
   os << C.to_str();
   return os;
 }
-
+/*
 inline bool operator==(const pw_aff& C1, const pw_aff& C2) {
   return C1.is_equal(C2);
 }
+*/
 
 
 std::string pw_aff::to_str() const {
@@ -13552,6 +13725,13 @@ int pw_aff_list::size() const
 }
 
 // implementations for isl::pw_multi_aff
+
+pw_multi_aff pw_multi_aff::from_map(map map)
+{
+  auto res = isl_pw_multi_aff_from_map(map.release());
+  return manage(res);
+}
+
 pw_multi_aff manage(__isl_take isl_pw_multi_aff *ptr) {
   if (!ptr)
     exception::throw_invalid("NULL input", __FILE__, __LINE__);
@@ -13675,11 +13855,11 @@ inline std::ostream& operator<<(std::ostream& os, const pw_multi_aff& C) {
   os << C.to_str();
   return os;
 }
-
+/*
 inline bool operator==(const pw_multi_aff& C1, const pw_multi_aff& C2) {
   return C1.is_equal(C2);
 }
-
+*/
 
 std::string pw_multi_aff::to_str() const {
   char *Tmp = isl_pw_multi_aff_to_str(get());
@@ -14490,6 +14670,89 @@ schedule_constraints schedule_constraints::set_validity(union_map validity) cons
 }
 
 // implementations for isl::schedule_node
+
+union_map schedule_node::get_subtree_schedule_union_map() const
+{
+  auto res = isl_schedule_node_get_subtree_schedule_union_map(get());
+  return manage(res);
+}
+
+set schedule_node::context_get_context() const
+{
+  auto res = isl_schedule_node_context_get_context(get());
+  return manage(res);
+}
+
+
+id schedule_node::mark_get_id() const
+{
+  auto res = isl_schedule_node_mark_get_id(get());
+  return manage(res);
+}
+
+schedule_node schedule_node::band_set_ast_build_options(union_set options) const
+{
+  auto res = isl_schedule_node_band_set_ast_build_options(copy(), options.release());
+  return manage(res);
+}
+
+set schedule_node::guard_get_guard() const
+{
+  auto res = isl_schedule_node_guard_get_guard(get());
+  return manage(res);
+}
+
+union_set schedule_node::domain_get_domain() const
+{
+  auto res = isl_schedule_node_domain_get_domain(get());
+  return manage(res);
+}
+
+union_pw_multi_aff schedule_node::expansion_get_contraction() const
+{
+  auto res = isl_schedule_node_expansion_get_contraction(get());
+  return manage(res);
+}
+
+union_map schedule_node::expansion_get_expansion() const
+{
+  auto res = isl_schedule_node_expansion_get_expansion(get());
+  return manage(res);
+}
+
+union_map schedule_node::extension_get_extension() const
+{
+  auto res = isl_schedule_node_extension_get_extension(get());
+  return manage(res);
+}
+
+union_set schedule_node::filter_get_filter() const
+{
+  auto res = isl_schedule_node_filter_get_filter(get());
+  return manage(res);
+}
+
+
+
+multi_union_pw_aff schedule_node::band_get_partial_schedule() const
+{
+  auto res = isl_schedule_node_band_get_partial_schedule(get());
+  return manage(res);
+}
+
+boolean schedule_node::band_member_get_coincident(int pos) const
+{
+  auto res = isl_schedule_node_band_member_get_coincident(get(), pos);
+  return manage(res);
+}
+
+schedule_node schedule_node::band_member_set_coincident(int pos, int coincident) const
+{
+  auto res = isl_schedule_node_band_member_set_coincident(copy(), pos, coincident);
+  return manage(res);
+}
+
+
 schedule_node manage(__isl_take isl_schedule_node *ptr) {
   if (!ptr)
     exception::throw_invalid("NULL input", __FILE__, __LINE__);
@@ -14512,13 +14775,13 @@ schedule_node::schedule_node()
 schedule_node::schedule_node(const schedule_node &obj)
     : ptr(nullptr)
 {
-  if (!obj.ptr)
-    exception::throw_invalid("NULL input", __FILE__, __LINE__);
-  auto ctx = isl_schedule_node_get_ctx(obj.ptr);
-  options_scoped_set_on_error saved_on_error(ctx, exception::on_error);
+  //if (!obj.ptr)
+  //  exception::throw_invalid("NULL input", __FILE__, __LINE__);
+  //auto ctx = isl_schedule_node_get_ctx(obj.ptr);
+  //options_scoped_set_on_error saved_on_error(ctx, exception::on_error);
   ptr = obj.copy();
-  if (obj.ptr && !ptr)
-    exception::throw_last_error(ctx);
+  //if (obj.ptr && !ptr)
+  //  exception::throw_last_error(ctx);
 }
 
 schedule_node::schedule_node(__isl_take isl_schedule_node *ptr)
@@ -17131,6 +17394,46 @@ int set_list::size() const
 }
 
 // implementations for isl::space
+
+space space::set_tuple_name(isl::dim type, const std::string &s) const
+{
+  auto res = isl_space_set_tuple_name(copy(), static_cast<enum isl_dim_type>(type), s.c_str());
+  return manage(res);
+}
+
+unsigned int space::dim(isl::dim type) const
+{
+  auto res = isl_space_dim(get(), static_cast<enum isl_dim_type>(type));
+  return res;
+}
+
+
+space space::add_dims(isl::dim type, unsigned int n) const
+{
+  auto res = isl_space_add_dims(copy(), static_cast<enum isl_dim_type>(type), n);
+  return manage(res);
+}
+
+
+id space::get_tuple_id(isl::dim type) const
+{
+  auto res = isl_space_get_tuple_id(get(), static_cast<enum isl_dim_type>(type));
+  return manage(res);
+}
+
+std::string space::get_tuple_name(isl::dim type) const
+{
+  auto res = isl_space_get_tuple_name(get(), static_cast<enum isl_dim_type>(type));
+  std::string tmp(res);
+  return tmp;
+}
+
+int space::find_dim_by_name(isl::dim type, const std::string& name) const
+{
+  auto res = isl_space_find_dim_by_name(get(), static_cast<enum isl_dim_type>(type), name.c_str());
+  return res;
+}
+
 space manage(__isl_take isl_space *ptr) {
   if (!ptr)
     exception::throw_invalid("NULL input", __FILE__, __LINE__);
@@ -17190,6 +17493,14 @@ space::space(ctx ctx, unsigned int nparam)
   ptr = res;
 }
 
+boolean space::has_tuple_id(isl::dim type) const
+{
+  auto res = isl_space_has_tuple_id(get(), static_cast<enum isl_dim_type>(type));
+  return manage(res);
+}
+
+
+
 space &space::operator=(space obj) {
   std::swap(this->ptr, obj.ptr);
   return *this;
@@ -17245,6 +17556,14 @@ std::string space::to_str() const {
 ctx space::get_ctx() const {
   return ctx(isl_space_get_ctx(ptr));
 }
+
+//bool space::has_tuple_id() const
+//{
+//  auto res = isl_space_has_tuple_id(get(), isl_dim_type::isl_dim_out);
+//  if (res)
+//    return true;
+//  return false;
+//}
 
 space space::add_named_tuple_id_ui(id tuple_id, unsigned int dim) const
 {
@@ -18060,6 +18379,19 @@ union_map union_flow::get_must_no_source() const
 }
 
 // implementations for isl::union_map
+
+union_map union_map::project_out(isl::dim type, unsigned int first, unsigned int n) const
+{
+  auto res = isl_union_map_project_out(copy(), static_cast<enum isl_dim_type>(type), first, n);
+  return manage(res);
+}
+
+union_map::union_map(union_pw_multi_aff upma)
+{
+  auto res = isl_union_map_from_union_pw_multi_aff(upma.release());
+  ptr = res;
+}
+
 union_map manage(__isl_take isl_union_map *ptr) {
   if (!ptr)
     exception::throw_invalid("NULL input", __FILE__, __LINE__);
@@ -18179,6 +18511,12 @@ std::string union_map::to_str() const {
 
 ctx union_map::get_ctx() const {
   return ctx(isl_union_map_get_ctx(ptr));
+}
+
+bool union_map::is_identity() const
+{
+  auto res = isl_union_map_is_identity(get());
+  return res;
 }
 
 union_map union_map::add_map(map map) const
@@ -19622,6 +19960,12 @@ int union_pw_aff_list::size() const
 }
 
 // implementations for isl::union_pw_multi_aff
+union_pw_multi_aff::union_pw_multi_aff(union_map umap)
+{
+  auto res = isl_union_pw_multi_aff_from_union_map(umap.release());
+  ptr = res;
+}
+
 union_pw_multi_aff manage(__isl_take isl_union_pw_multi_aff *ptr) {
   if (!ptr)
     exception::throw_invalid("NULL input", __FILE__, __LINE__);
@@ -20771,6 +21115,13 @@ int union_set_list::size() const
 }
 
 // implementations for isl::val
+val val::mul_ui(unsigned long v2) const
+{
+  auto res = isl_val_mul_ui(copy(), v2);
+  return manage(res);
+}
+
+
 val manage(__isl_take isl_val *ptr) {
   if (!ptr)
     exception::throw_invalid("NULL input", __FILE__, __LINE__);

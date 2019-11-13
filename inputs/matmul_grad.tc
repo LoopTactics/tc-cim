@@ -1,0 +1,4 @@
+def matmul_grad(float(M,N) A, float(N,K) B, float(M,K) D) -> (d_A, d_B) {
+  d_A(m,n) +=! D(m,r_k) * B(n, r_k)
+  d_B(n,k) +=! D(r_m,k) * A(r_m, n)
+}

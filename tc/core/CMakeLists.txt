@@ -35,6 +35,10 @@ add_library(
   polyhedral/separation.cc
   polyhedral/unroll.cc
   polyhedral/utils.cc
+
+  polyhedral/matchers/access_patterns.cc
+  polyhedral/matchers/builders.cc
+  polyhedral/matchers/matchers.cc
 )
 target_include_directories(tc_core PUBLIC ${LLVM_INCLUDE_DIRS})
 target_link_libraries(
@@ -202,6 +206,7 @@ add_library(
   # Files needed for execution
   polyhedral/tactics/mapped_scop.cc
   polyhedral/tactics/codegen.cc
+  polyhedral/tactics/tactics_optimizer.cc
   tactics/tactics_mapping_options.cc
   tactics/tactics_mapping_options_cpp_printer.cc
   tactics/tactics_tc_executor.cc

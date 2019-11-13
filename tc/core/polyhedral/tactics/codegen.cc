@@ -26,13 +26,14 @@
 #include "tc/core/flags.h"
 #include "tc/core/polyhedral/body.h"
 #include "tc/core/polyhedral/codegen.h"
-#include "tc/core/polyhedral/tactics/codegen.h"
 #include "tc/core/polyhedral/cuda/mapping_types.h"
 #include "tc/core/polyhedral/exceptions.h"
 #include "tc/core/polyhedral/memory_promotion.h"
 #include "tc/core/polyhedral/schedule_isl_conversion.h"
 #include "tc/core/polyhedral/schedule_transforms.h"
 #include "tc/core/polyhedral/scop.h"
+#include "tc/core/polyhedral/tactics/codegen.h"
+#include "tc/core/polyhedral/tactics/tactics_optimizer.h"
 
 using namespace std;
 
@@ -68,7 +69,7 @@ static std::string halideTypeString(const Halide::Type& t) {
   } else if (t.is_float() && t.bits() == 16) {
     return "half";
   } else if (t.is_float() && t.bits() == 32) {
-    return "float";
+    return "char";
   } else if (t.is_float() && t.bits() == 64) {
     return "double";
   }
@@ -99,6 +100,10 @@ std::string makePointerName(std::string n) {
   return string("p") + n;
 }
 
+std::string makeName(std::string n) {
+  return n;
+}
+
 std::string makeReductionTmpName(isl::id updateId, const Scop& scop) {
   int pos = scop.reductionUpdatePos(updateId);
   return "acc_" + std::to_string(pos);
@@ -123,6 +128,10 @@ struct AstPrinter {
   void emitIf(isl::ast_node_if node);
   void emitStmt(isl::ast_node_user node);
   void emitAst(isl::ast_node node);
+  void emitMark(isl::ast_node_mark mark);
+  void emitMatmulMark(isl::ast_node_mark mark);
+  void emitGemvMark(isl::ast_node_mark mark);
+  void emitBatchedMatmulMark(isl::ast_node_mark mark);
 
  private:
   const CodegenContext& context_;
@@ -144,37 +153,41 @@ vector<pair<string, string>> emitParams(const Scop& scop) {
 
     res.push_back(make_pair(sname, stype));
   }
-      
+
   return res;
 }
 
 // Returns a pair (tensor name, tensor type)
 pair<string, string> emitTypedTensorName(
     Halide::OutputImageParam t,
-    bool constInput = false) {
+    bool constInput = false,
+    std::string (name_fun)(std::string) = makePointerName) {
   stringstream sstype;
   sstype << (constInput ? "const " : "") << halideTypeString(t.type()) << "*";
 
-  string sname = makePointerName(t.name());
-  
+  string sname = name_fun(t.name());
+
   return make_pair(sname, sstype.str());
 }
 
 vector<pair<string, string>> emitTypedTensorNames(
-    const vector<Halide::OutputImageParam>& tensors) {
+    const vector<Halide::OutputImageParam>& tensors,
+    std::string (name_fun)(std::string) = makePointerName) {
   vector<pair<string, string>> res;
   res.reserve(tensors.size());
   for (auto t : tensors) {
-    res.push_back(emitTypedTensorName(t));
+    res.push_back(emitTypedTensorName(t, false, name_fun));
   }
   return res;
 }
 
-vector<pair<string, string>> emitTypedTensorNames(const vector<Halide::ImageParam>& tensors) {
+vector<pair<string, string>> emitTypedTensorNames(
+    const vector<Halide::ImageParam>& tensors,
+    std::string (name_fun)(std::string) = makePointerName) {
   vector<pair<string, string>> res;
   res.reserve(tensors.size());
   for (auto t : tensors) {
-    res.push_back(emitTypedTensorName(t, true));
+    res.push_back(emitTypedTensorName(t, true, name_fun));
   }
   return res;
 }
@@ -240,9 +253,8 @@ void emitTensorView(
   ss << (constInput ? "const " : "") << halideTypeString(p.type()) << " (*"
      << p.name() << ")" << ssViewType.str();
   ss << " = ";
-  ss << "(" << (constInput ? "const " : "")
-     << halideTypeString(p.type()) << " (*)" << ssViewType.str() << ")"
-     << makePointerName(p.name()) << ";";
+  ss << "(" << (constInput ? "const " : "") << halideTypeString(p.type())
+     << " (*)" << ssViewType.str() << ")" << makePointerName(p.name()) << ";";
   ss << endl;
 }
 
@@ -293,14 +305,24 @@ void emitUserStmt(isl::id stmtId, const CodegenStatementContext& context) {
   TC_CHECK(context.scop().halide.statements.count(stmtId))
       << "No stmt with id " << stmtId << "\n";
   auto provide = context.scop().halide.statements.at(stmtId);
+
   auto op = provide.as<Halide::Internal::Provide>();
-  TC_CHECK(op) << "Expected a Provide node: " << provide << '\n';
-  detail::emitMappedTensorAccess(op->name, op, op->args, context);
-  context.ss << " = ";
-  TC_CHECK(op->values.size() == 1)
-      << "Multi-valued Provide: " << Halide::Internal::Stmt(provide) << "\n";
-  detail::emitHalideExpr(op->values[0], context);
-  context.ss << ";" << endl;
+
+  if (op) {
+    TC_CHECK(op) << "Expected a Provide node: " << provide << '\n';
+    detail::emitMappedTensorAccess(op->name, op, op->args, context);
+    context.ss << " = ";
+    TC_CHECK(op->values.size() == 1)
+        << "Multi-valued Provide: " << Halide::Internal::Stmt(provide) << "\n";
+    detail::emitHalideExpr(op->values[0], context);
+    context.ss << ";" << endl;
+  }
+
+  auto opCall = provide.as<Halide::Internal::Call>();
+
+  if (opCall) {
+    detail::emitHalideExpr(opCall, context);
+  }
 }
 
 void emitReductionUpdate(
@@ -452,6 +474,163 @@ void AstPrinter::emitStmt(isl::ast_node_user node) {
   }
 }
 
+// create GEMM blas call.
+// cimblas_gemm(
+//  transA : is A transpose?
+//  transB : is B transpose?
+//  m : specifies the number of rows for A and C
+//  n : specifies the number of cols for B and C
+//  k : specifies the number of cols for A and the number of rows for B
+//  alpha : scalar alpha
+//  A : 2-d tensor
+//  lda : max(1, k) if no trans or max(1, m)
+//  B : 2-d tensor
+//  ldb : max(1, n) if no trans or max(1, k)
+//  beta : scalar beta
+//  C : 2-d tensor
+//  ldc : max(1,m));
+void AstPrinter::emitMatmulMark(isl::ast_node_mark mark) {
+  std::cout << __func__ << std::endl;
+
+  isl::id markId = mark.get_id();
+  void* user = isl_id_get_user(markId.get());
+  MatMulInfo* payload = static_cast<MatMulInfo*>(user);
+
+  WS ws;
+
+  int m = 
+    payload->readFromA.dims[0].ub - payload->readFromA.dims[0].lb;
+  int n =
+    payload->readFromB.dims[1].ub - payload->readFromB.dims[1].lb;
+  int k =
+    payload->readFromA.dims[1].ub - payload->readFromA.dims[1].lb;
+  int lda = (payload->isAtranspose) ? std::max(1, m) : std::max(1, k);
+  int ldb = (payload->isBtranspose) ? std::max(1, k) : std::max(1, n);
+  int ldc = std::max(1, m);
+
+  context_.ss << ws.tab() << "cimblas_gemm("
+              << payload->isAtranspose << ", "
+              << payload->isBtranspose << ", " 
+              << m << ", " << n << ", " << k << ", "
+              << payload->alpha << ", "
+              << payload->readFromA.name << ", "
+              << lda << ", "
+              << payload->readFromB.name << ", " 
+              << ldb << ", "
+              << payload->beta << ", " 
+              << payload->writeToC.name << ", "  
+              << ldc << ");" << std::endl;
+
+  delete payload;
+}
+
+// create GEMV blas call.
+// cimblas_gemv(
+//   transA : is A transpose?
+//   m : specifies the number of rows for A
+//   n : specifies the number of cols for A
+//   alpha : sclara alpha
+//   A : 2-d tensor
+//   lda : max(1, n)
+//   X : 1-d tensor
+//   incx : increment for X
+//   beta : scalar beta
+//   Y : 1-d tensor
+//   incy : increment for y)
+void AstPrinter::emitGemvMark(isl::ast_node_mark mark) {
+  isl::id markId = mark.get_id();
+  void* user = isl_id_get_user(markId.get());
+  GemvInfo* payload = static_cast<GemvInfo*>(user);
+
+  WS ws;
+
+  int m = payload->readFromA.dims[0].ub - payload->readFromA.dims[0].lb;
+  int n = payload->readFromA.dims[1].ub - payload->readFromA.dims[0].lb;
+  int lda = std::max(1, n);
+
+  context_.ss << ws.tab() << "cimblas_gemv(" 
+              << payload->isAtranspose << ", "
+              << m << ", " << n << ", "
+              << payload->alpha << ", "
+              << payload->readFromA.name << ", "
+              << lda << ", "
+              << payload->readFromX.name << ", "
+              << payload->incx << ", "
+              << payload->beta << ", "
+              << payload->writeToY.name << ", "
+              << payload->incy << ");" << std::endl;
+
+  delete payload;
+}
+
+// create BATCH GEMM blas call.
+// cimblas_gemm(
+//  batch: batch dimension
+//  transA : is A transpose?
+//  transB : is B transpose?
+//  m : specifies the number of rows for A and C
+//  n : specifies the number of cols for B and C
+//  k : specifies the number of cols for A and the number of rows for B
+//  alpha : scalar alpha
+//  A : 2-d tensor
+//  lda : max(1, k) if no trans or max(1, m)
+//  B : 2-d tensor
+//  ldb : max(1, n) if no trans or max(1, k)
+//  beta : scalar beta
+//  C : 2-d tensor
+//  ldc : max(1,m));
+void AstPrinter::emitBatchedMatmulMark(isl::ast_node_mark mark) {
+  isl::id markId = mark.get_id();
+  void* user = isl_id_get_user(markId.get());
+  BatchedMatMulInfo* payload = static_cast<BatchedMatMulInfo*>(user);
+
+  WS ws;
+
+ int m = 
+    payload->readFromA.dims[0].ub - payload->readFromA.dims[0].lb;
+  int n =
+    payload->readFromB.dims[1].ub - payload->readFromB.dims[1].lb;
+  int k =
+    payload->readFromA.dims[1].ub - payload->readFromA.dims[1].lb;
+  int lda = (payload->isAtranspose) ? std::max(1, m) : std::max(1, k);
+  int ldb = (payload->isBtranspose) ? std::max(1, k) : std::max(1, n);
+  int ldc = std::max(1, m);
+
+  context_.ss << ws.tab() << "cimblas_batched_gemm(" 
+              << payload->batch << ", " 
+              << payload->isAtranspose << ", "
+              << payload->isBtranspose << ", " 
+              << m << ", " << n << ", " << k << ", " 
+              << payload->alpha << ", " 
+              << payload->readFromA.name << ", " << lda << ", "
+              << payload->readFromB.name << ", " << ldb << ", "
+              << payload->beta << ", "
+              << payload->writeToC.name << ", " << ldc 
+              << ");"
+              << std::endl;
+  delete payload; 
+}
+
+void AstPrinter::emitMark(isl::ast_node_mark mark) {
+  std::cout << __func__ << std::endl;
+
+  isl::id markId = mark.get_id();
+  const std::string markType = markId.get_name();
+
+  if (markType == "__tactics_gemm") {
+    emitMatmulMark(mark);
+  } 
+  else if (markType == "__tactics_mvt") {
+    emitGemvMark(mark);
+  }
+  else if (markType == "__tactics_batched_gemm") {
+    emitBatchedMatmulMark(mark);
+  } 
+  else {
+    LOG(FATAL) << "Unsupported mark type: " << markType;
+  }
+}
+
 void AstPrinter::emitAst(isl::ast_node node) {
   if (auto forNode = node.as<isl::ast_node_for>()) {
     emitFor(forNode);
@@ -461,9 +640,8 @@ void AstPrinter::emitAst(isl::ast_node node) {
     for (auto child : blockNode.get_children()) {
       emitAst(child);
     }
-  } else if (node.as<isl::ast_node_mark>()) {
-    TC_CHECK(false) << "mark";
-    // emitAst(node.mark_get_node());
+  } else if (auto mark = node.as<isl::ast_node_mark>()) {
+    emitMark(mark);
   } else if (auto userNode = node.as<isl::ast_node_user>()) {
     emitStmt(userNode);
   } else {
@@ -594,6 +772,7 @@ void emitMappedTensorAccess(
     const Halide::Internal::IRNode* node,
     const vector<Halide::Expr>& subscripts,
     const CodegenStatementContext& context) {
+  std::cout << __func__ << std::endl;
   // Scalars are not promoted or remapped.
   if (subscripts.empty()) {
     context.ss << name << "[0]";
@@ -724,6 +903,7 @@ string emitTacticsKernel(
   // Expecting a schedule with domain root and context first child.
   TC_CHECK(mscop.schedule()->as<ScheduleTreeDomain>());
   TC_CHECK(mscop.schedule()->child({0})->as<ScheduleTreeContext>());
+
   const auto& scop = mscop.scop();
 
   // Make a map of the specialized scalar parameter values
@@ -766,23 +946,213 @@ string emitTacticsKernel(
     return collectIteratorMaps(n, b, &nodeInfoMap);
   };
 
-  auto schedule = toIslSchedule(mscop.schedule());
+  auto schedule = detectInSchedule(mscop);
   auto astBuild = isl::ast_build(schedule.get_ctx());
   astBuild = astBuild.set_at_each_domain(collect);
-  auto root = mscop.schedule();
-  astBuild = astBuild.set_iterators(Codegen::makeLoopIterators(root));
+
+  auto root = ::tc::polyhedral::detail::fromIslSchedule(schedule);
+
   auto astNode = astBuild.node_from(schedule);
 
-  AstPrinter(CodegenContext(ss, mscop, nodeInfoMap))
-      .emit(astNode);
+  AstPrinter(CodegenContext(ss, mscop, nodeInfoMap)).emit(astNode);
   ss << "}" << endl;
 
   return ss.str();
 }
 
+string emitTacticsMain(const std::string& specializedName,
+		       const MappedScop& mscop)
+{
+  const Scop& scop = mscop.scop();
+  stringstream ss;
+  WS ws;
+
+  // Make a map of the specialized scalar parameter values
+  map<string, Halide::Expr> paramValues;
+  
+  for (const auto& kvp : scop.parameterValues)
+    paramValues[kvp.first] = kvp.second;
+
+  ss << "int main(int argc, char** argv) {" << std::endl;
+
+  // Parameters
+  auto paramsVec = emitParams(scop);
+
+  for(auto& param: paramsVec) {
+    ss << ws.tab()
+       << "static const "
+       << param.second
+       << " "
+       << param.first
+       << " = "
+       << paramValues[param.first]
+       << ";"
+       << std::endl;
+  }
+
+  ss << std::endl;
+  
+  // Declarations
+  auto emitDecl = [&](const Halide::OutputImageParam& p) {
+		    ss << ws.tab()
+		       << "static "
+		       << halideTypeString(p.type())
+		       << " "
+		       << p.name();
+
+		    for (int i = 0; i < p.dimensions(); ++i) {
+		      Halide::Expr extent = p.parameter().extent_constraint(i);
+		      extent = Halide::Internal::substitute(paramValues, extent);
+		      ss << "[" << extent << "]";
+		    }
+
+		    ss << ";" << std::endl;
+		  };		     
+  
+  for (auto& o : scop.halide.outputs)
+    emitDecl(o);
+
+  ss << std::endl;
+  
+  for (auto& i : scop.halide.inputs)
+    emitDecl(i);
+
+  ss << std::endl;
+
+  // Initializations
+  auto emitInit = [&](const Halide::ImageParam& p) {
+		    stringstream ssHead;
+		    stringstream ssStmt;
+		    stringstream tabs;
+		    stringstream ssRandExpr;
+
+		    ssStmt << p.name();
+
+		    for (int i = 0; i < p.dimensions(); ++i) {
+		      std::string iterName = "i" + std::to_string(i);
+		      tabs << ws.tab();
+			
+		      Halide::Expr extent = p.parameter().extent_constraint(i);
+
+		      ssHead << tabs.str()
+			     << "for(size_t "
+			     << iterName
+			     << " = 0; "
+			     << iterName
+			     << " < "
+			     << extent
+			     << "; "
+			     << iterName
+			     << "++)"
+			     << std::endl;
+
+		      ssStmt << "[" << iterName << "]";
+		      ssRandExpr << iterName;
+
+		      if(i != p.dimensions()-1)
+			ssRandExpr << "+";
+		    }
+
+		    ssStmt << " = " << ssRandExpr.str() << ";" << std::endl;
+
+		    tabs << ws.tab();
+
+		    ss << ssHead.str()
+		       << tabs.str()
+		       << ssStmt.str();
+		  };
+
+  for (auto& i : scop.halide.inputs) {
+    emitInit(i);
+    ss << std::endl;
+  }
+
+  ss << std::endl;
+
+  ss << "  " << specializedName << "(";
+
+  auto sigVec = paramsVec +
+    emitTypedTensorNames(scop.halide.outputs, makeName) +
+    emitTypedTensorNames(scop.halide.inputs, makeName);
+ 
+  for (auto& s : sigVec) {
+    string& sname = s.first;
+
+    ss << sname;
+
+    if (s != sigVec.back()) {
+      ss << ", ";
+    }
+  }
+
+  ss << ");" << std::endl;
+
+  // Use the results
+  ss << std::endl
+     << ws.tab()
+     << "float v = 0;"
+     << std::endl;
+
+  auto emitUse = [&](const Halide::OutputImageParam& p) {
+		   stringstream ssHead;
+		   stringstream ssStmt;
+		   stringstream tabs;
+
+		   ssStmt << "v += " << p.name();
+
+		   for (int i = 0; i < p.dimensions(); ++i) {
+		     std::string iterName = "i" + std::to_string(i);
+		     tabs << ws.tab();
+			
+		     Halide::Expr extent = p.parameter().extent_constraint(i);
+
+		     ssHead << tabs.str()
+			    << "for(size_t "
+			    << iterName
+			    << " = 0; "
+			    << iterName
+			    << " < "
+			    << extent
+			    << "; "
+			    << iterName
+			    << "++)"
+			    << std::endl;
+
+		     ssStmt << "[" << iterName << "]";
+		   }
+
+		   ssStmt << ";" << std::endl;
+
+		   tabs << ws.tab();
+
+		   ss << ssHead.str()
+		      << tabs.str()
+		      << ssStmt.str();
+		 };
+
+  for (auto& o : scop.halide.outputs) {
+    emitUse(o);
+    ss << std::endl;
+  }
+
+  ss << ws.tab()
+     << "printf(\"Sum of all output elements: %f\\n\", v);"
+     << std::endl;
+
+
+  ss << std::endl
+     << ws.tab()
+     << "return 0;"
+     << std::endl;
+
+  ss << "}" << std::endl;
+
+  return ss.str();
+}
+
 string emitTacticsEntryPoint(
-   const std::string& specializedName,
-   const MappedScop& mscop) {
+    const std::string& specializedName,
+    const MappedScop& mscop) {
   stringstream ss;
 
   const auto& scop = mscop.scop();
@@ -791,20 +1161,23 @@ string emitTacticsEntryPoint(
   sigVec = sigVec + emitTypedTensorNames(scop.halide.inputs);
 
   ss << "void tactics_entrypoint(void** args, size_t num_args) {" << std::endl;
-  
+
   ss << "  if(num_args != " << sigVec.size() << ") {" << std::endl
      << "    fprintf(stderr, \"Wrong number of arguments:\"" << std::endl
      << "                    \"Expected %zu, but got %zu\\n\", " << std::endl
-     << "                    (size_t)" << sigVec.size() << ", num_args);" << std::endl
+     << "                    (size_t)" << sigVec.size() << ", num_args);"
+     << std::endl
      << "    exit(1);" << std::endl
-     << "  }" << std::endl << std::endl;
+     << "  }" << std::endl
+     << std::endl;
 
   int i = 0;
   for (auto& s : sigVec) {
     string& sname = s.first;
     string& stype = s.second;
 
-    ss << "  " << stype << " " << sname << " = *((" << stype << "*)args[" << i << "]);" << std::endl;
+    ss << "  " << stype << " " << sname << " = *((" << stype << "*)args[" << i
+       << "]);" << std::endl;
 
     ++i;
   }
@@ -817,19 +1190,19 @@ string emitTacticsEntryPoint(
     string& sname = s.first;
 
     ss << sname;
-    
+
     if (s != sigVec.back()) {
       ss << ", ";
     }
   }
 
   ss << ");" << std::endl;
-  
+
   ss << "}" << std::endl;
 
   return ss.str();
 }
-  
+
 } // namespace tactics
 } // namespace polyhedral
 } // namespace tc

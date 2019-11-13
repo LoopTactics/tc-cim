@@ -21,8 +21,8 @@
 #include <unordered_map>
 
 #include "tc/core/halide2isl.h"
-#include "tc/core/polyhedral/tactics/mapped_scop.h"
 #include "tc/core/polyhedral/scop.h"
+#include "tc/core/polyhedral/tactics/mapped_scop.h"
 #include "tc/external/isl.h"
 
 namespace tc {
@@ -85,17 +85,10 @@ struct CodegenContext {
   CodegenContext(
       std::stringstream& ss_,
       const MappedScop& s,
-      const NodeInfoMapType& i// ,
-      // const std::unordered_set<isl::id, isl::IslIdIslHash>& ros
-		 )
-      : ss(ss_), mappedScop(s), nodeInfoMap(i)// , readOnlySet(ros)
-  {}
+      const NodeInfoMapType& i)
+      : ss(ss_), mappedScop(s), nodeInfoMap(i) {}
   CodegenContext(const CodegenContext& c)
-      : ss(c.ss),
-        mappedScop(c.mappedScop),
-        nodeInfoMap(c.nodeInfoMap)// ,
-        // readOnlySet(c.readOnlySet)
-  {}
+      : ss(c.ss), mappedScop(c.mappedScop), nodeInfoMap(c.nodeInfoMap) {}
 
   const Scop& scop() const {
     return mappedScop.scop();
@@ -148,6 +141,10 @@ struct CodegenStatementContext : CodegenContext {
 };
 
 std::string emitTacticsKernel(
+    const std::string& specializedName,
+    const MappedScop& scop);
+
+std::string emitTacticsMain(
     const std::string& specializedName,
     const MappedScop& scop);
 

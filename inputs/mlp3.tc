@@ -1,0 +1,12 @@
+def mlp3(float(B,N) I, float(O,N) W2, float(O) B2, float(P,O) W3, float(P) B3,
+         float(Q,P) W4, float(Q) B4) -> (O2, O3, O4) {
+    O2(b, o) +=!  I(b, n) * W2(o, n)
+    O2(b, o)  =  O2(b, o) + B2(o)
+    O2(b, o)  = fmax(O2(b, o), 0)
+    O3(b, p) +=! O2(b, o) * W3(p, o)
+    O3(b, p)  =  O3(b, p) + B3(p)
+    O3(b, p)  = fmax(O3(b, p), 0)
+    O4(b, q) +=! O3(b, p) * W4(q, p)
+    O4(b, q)  =  O4(b, q) + B4(q)
+    O4(b, q)  = fmax(O4(b, q), 0)
+}

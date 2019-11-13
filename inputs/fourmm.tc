@@ -1,0 +1,6 @@
+def fourmm(float(N,M) A, float(M,K) B, float(N,M) F, float(M,K) E, float(N,K) C, float(N,k) D) -> (L)
+{
+  C(i,j) +=! A(i,k) * B(k, j)
+  D(i,j) +=! F(i,k) * E(k,j)
+  L(i,j) +=! C(i,k) * D(k,j)
+}

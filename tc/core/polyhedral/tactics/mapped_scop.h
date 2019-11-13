@@ -21,9 +21,10 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <limits>
 
-#include "tc/core/tactics/tactics_mapping_options.h"
 #include "tc/core/polyhedral/scop.h"
+#include "tc/core/tactics/tactics_mapping_options.h"
 #include "tc/core/tensor.h"
 #include "tc/external/isl.h"
 
@@ -34,6 +35,148 @@ class ScheduleTree;
 } // namespace detail
 
 namespace tactics {
+
+// TODO: use _
+class DimInfo {
+  public:
+    DimInfo() = default;
+    DimInfo(const DimInfo& d) = default;
+    DimInfo(int l, int u) : lb(l), ub(u) {};
+
+  public:
+    int lb = std::numeric_limits<int>::min();
+    int ub = std::numeric_limits<int>::min();
+
+  bool operator!=(const DimInfo& d) const {
+    if (this->lb != d.lb)
+      return true;
+    if (this->ub != d.ub)
+      return true;
+    return false;
+  }
+
+  bool operator==(const DimInfo& d) const {
+    if (this->lb != d.lb)
+      return false;
+    if (this->ub != d.ub)
+      return false;
+    return true;
+  }
+};
+    
+class ArrayInfo {
+  public:
+    ArrayInfo() = default;  
+    ArrayInfo(std::string s, std::vector<DimInfo> d) : name(s), dims(d) {};
+    ArrayInfo(const ArrayInfo& a) = default;
+
+  public:
+    std::string name = "nullptr";
+    std::vector<DimInfo> dims;
+
+  bool operator!=(const ArrayInfo& a) const {
+    if (this->name != a.name)
+      return true;
+    if (this->dims.size() != a.dims.size())
+      return true;
+    bool t = std::equal(this->dims.begin(), this->dims.begin() + this->dims.size(), a.dims.begin());
+    if (!t)
+      return true;
+    return false;
+  }
+
+  bool operator==(const ArrayInfo& a) const {
+    if (this->name != a.name)
+      return false;
+    if (this->dims.size() != a.dims.size())
+      return false;
+    bool t = std::equal(this->dims.begin(), this->dims.begin() + this->dims.size(), a.dims.begin());
+    if (!t)
+      return false;
+    return true;
+  }
+};
+
+class MatMulInfo {
+ public:
+  MatMulInfo() = default;
+  MatMulInfo(const MatMulInfo& m) = default;
+
+ public:
+  ArrayInfo readFromA{};
+  ArrayInfo readFromB{};
+  ArrayInfo readFromC{};
+  ArrayInfo writeToC{};
+  ArrayInfo writeToCInit{};
+
+  std::string beta = "1";
+  std::string alpha = "1";
+
+  int i = -1;
+  int j = -1;
+  int k = -1;
+
+  bool isAtranspose = false;
+  bool isBtranspose = false;
+};
+
+class GemvInfo {
+ public:
+  GemvInfo() = default;
+  GemvInfo(const GemvInfo& g) = default;
+
+ public:
+  ArrayInfo readFromA{};
+  ArrayInfo readFromX{};
+  ArrayInfo readFromY{};
+  ArrayInfo writeToY{};
+  ArrayInfo writeToYInit{};
+
+  std::string beta = "1";
+  std::string alpha = "1";
+
+  int incx = -1;
+  int incy = -1;
+
+  int i = -1;
+  int j = -1;
+
+  bool isAtranspose = false;
+};
+
+class BatchedMatMulInfo { 
+  public:
+    BatchedMatMulInfo() = default;
+    BatchedMatMulInfo(const BatchedMatMulInfo& mm) = default;
+
+  public:
+    ArrayInfo readFromA{};
+    ArrayInfo readFromB{};  
+    ArrayInfo readFromC{};
+    ArrayInfo writeToC{};
+    ArrayInfo writeToCInit{};
+
+    std::string beta = "1";
+    std::string alpha = "1";
+ 
+    int batch = -1;
+    int i = -1;
+    int j = -1;
+    int k = -1;
+    
+    bool isAtranspose = false;
+    bool isBtranspose = false;
+};
+
+class BlasInfo {
+ public:
+  BlasInfo() = default;
+
+ public:
+  MatMulInfo mmi;
+  GemvInfo mvi;
+  BatchedMatMulInfo bmmi;
+};
 
 // Scop associated with fixed block and grid dimensions.
 //
@@ -61,19 +204,17 @@ namespace tactics {
 // elements incompatible with other Scop modifications.
 class MappedScop {
  private:
-  MappedScop(
-      std::unique_ptr<Scop>&& scop, uint64_t unroll_)
-      : scop_(std::move(scop)), unroll(unroll_)
-  {}
+  MappedScop(std::unique_ptr<Scop>&& scop, uint64_t unroll_)
+      : scop_(std::move(scop)), unroll(unroll_) {}
 
  public:
   // The MappedScop returned by this method does not satisfy the invariant
   // of having a mapping to blocks and threads.  It is up to the caller
   // to insert these mappings.
   static inline std::unique_ptr<MappedScop> makeMappedScop(
-      std::unique_ptr<Scop>&& scop, uint64_t unroll) {
-    return std::unique_ptr<MappedScop>(
-        new MappedScop(std::move(scop), unroll));
+      std::unique_ptr<Scop>&& scop,
+      uint64_t unroll) {
+    return std::unique_ptr<MappedScop>(new MappedScop(std::move(scop), unroll));
   }
 
   // Prepare for sequential code
@@ -123,6 +264,12 @@ class MappedScop {
 
  public:
   const uint64_t unroll;
+};
+
+// Mappings from isl ids used by mark nodes to the metadata to
+// generated the replacement code
+struct TacticsReplacements {
+  std::unordered_map<isl::id, MatMulInfo, isl::IslIdIslHash> matmul;
 };
 
 } // namespace tactics

@@ -34,6 +34,13 @@ DEFINE_string(input, "", "Name of the TC input file");
 DEFINE_string(output, "-", "Name of the C output file");
 DEFINE_string(input_shapes, "", "Input shapes e.g., I0:16,32,16/I1:3,19,28");
 DEFINE_string(entrypoint, "", "Entrypoint to compile");
+DEFINE_string(tactics_outer_tile_sizes,
+	      "1",
+	      "Comma-separated list of tile sizes for outer tiling");
+
+DEFINE_string(tactics_fusion_strategy,
+	      "Max",
+	      "Fusion strategy [Min or Max]");
 
 using DLTensorUPtr = std::unique_ptr<DLTensor, tc::DLTensorDeleter>;
 using DLConstTensorUPtr = std::unique_ptr<DLConstTensor, tc::DLTensorDeleter>;
@@ -210,6 +217,10 @@ template <typename Backend> void compile()
 	      << std::endl;
     throw;
   }
+
+  mappingOptions.tile(FLAGS_tactics_outer_tile_sizes);
+
+  mappingOptions.scheduleFusionStrategy(FLAGS_tactics_fusion_strategy);
   
   lang::TreeRef entryPoint = parsedTcs[entryPointName];
 
